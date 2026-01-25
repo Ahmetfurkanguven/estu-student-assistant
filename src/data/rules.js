@@ -10,7 +10,7 @@ export const GRADE_SYSTEM = {
     CD: { coefficient: 1.7, passed: true },
     DC: { coefficient: 1.3, passed: true },
     DD: { coefficient: 1.0, passed: true },
-    FD: { coefficient: 0.5, passed: false },
+    FD: { coefficient: 0.0, passed: false },
     FF: { coefficient: 0.0, passed: false },
     YT: { coefficient: 0.0, passed: true },
     YZ: { coefficient: 0.0, passed: false },

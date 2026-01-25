@@ -96,11 +96,15 @@ function shouldExcludeFromGPA(c) {
     // 3) Muaf excluded
     if (status === "MUAF")
         return true;
-    // 4) Failed S excluded (passed S included)
+    // 4) MS (Exempt) always excluded (grade is 0.0 but counts credits if not excluded)
+    // We assume MS lines are placeholders or exempt courses.
+    if (status === "MS")
+        return true;
+    // 5) Failed S excluded (passed S included)
     if (status === "S" && isFailedGrade(grade))
         return true;
     // 5) Extra safety: Erasmus placeholder TTTxx failed excluded
-    if (/^TTT\d+$/i.test(code) && isFailedGrade(grade))
+    if (/^T+\d+$/i.test(code) && isFailedGrade(grade))
         return true;
     return false;
 }

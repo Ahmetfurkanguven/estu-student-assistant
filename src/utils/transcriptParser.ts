@@ -127,7 +127,7 @@ export function parseTranscriptText(text: string): StudentRecord[] {
 
                     // --- AGGRESSIVE OVERRIDES START ---
                     // Force specific courses to strict exclusion if parser missed substitution
-                    if (code.startsWith('TTT')) {
+                    if (/^T{3,}/.test(code)) {
                         // TTT01, TTT02, TTT03 etc. MUST be skipped if failed.
                         // If no substitution found, force one so calculator drops it.
                         if (!equivalentCourse && (foundGrade === 'FF' || foundGrade === 'DZ' || foundGrade === 'YZ')) {
