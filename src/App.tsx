@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, BookOpen, GraduationCap, Calendar, BarChart, ChevronRight, CheckCircle, AlertCircle, Trash2, Github, FileText, Download, BarChart3, CheckCircle2, Calculator, TrendingUp, Info, Award, ShieldCheck } from 'lucide-react';
+import { VisitorCounter } from './components/VisitorCounter';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -2224,6 +2225,7 @@ export default function App() {
             </div>
           </div>
         </footer>
+        <VisitorCounter />
       </div >
     </div >
   );
