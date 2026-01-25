@@ -1,0 +1,11 @@
+[
+  { "oldCode": "EMAT111", "newCode": "MAT1011", "note": "2025-2026 akademik yılından itibaren kod değişti" },
+  { "oldCode": "EKİM105", "newCode": "KİM1005", "note": "2025-2026 akademik yılından itibaren kod değişti" },
+  { "oldCode": "EMAT112", "newCode": "MAT1012", "note": "2025-2026 akademik yılından itibaren kod değişti" },
+  { "oldCode": "EMAT221", "newCode": "MAT2021", "note": "2025-2026 akademik yılından itibaren kod değişti" },
+  { "oldCode": "EMAT211", "newCode": "MAT2011", "note": "2025-2026 akademik yılından itibaren kod değişti" },
+  { "oldCode": "MAT293", "newCode": "MAT2093", "note": "2025-2026 akademik yılından itibaren kod ve adı değişti" },
+  { "oldCode": "İST244", "newCode": "İST2044", "note": "2025-2026 akademik yılından itibaren haftalık ders saati değişti" },
+  { "oldCode": "EEM322", "newCode": "EEM4501", "note": "Electronics II → Analog Electronics" },
+  { "oldCode": "EEM334", "newCode": "EEM4503", "note": "Digital Systems II → Digital Systems Design with VHDL and FPGA" }
+]

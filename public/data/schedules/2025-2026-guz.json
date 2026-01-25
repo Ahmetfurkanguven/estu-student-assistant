@@ -1,0 +1,9 @@
+[
+  { "courseCode": "EEM336", "section": "All", "day": "Pazartesi", "startTime": "09:00", "endTime": "12:00", "room": "E5", "type": "lecture", "async": false },
+  { "courseCode": "EEM342", "section": "A", "day": "Pazartesi", "startTime": "14:00", "endTime": "16:00", "room": "Lab", "type": "lab", "async": false },
+  { "courseCode": "EEM308", "section": "A", "day": "Pazartesi", "startTime": "14:00", "endTime": "16:00", "room": "Lab", "type": "lab", "async": false },
+  { "courseCode": "İŞL101", "section": "All", "day": "Salı", "startTime": "09:00", "endTime": "12:00", "room": "E1", "type": "lecture", "async": false },
+  { "courseCode": "EEM308", "section": "All", "day": "Salı", "startTime": "14:00", "endTime": "17:00", "room": "E5", "type": "lecture", "async": false },
+  { "courseCode": "TAR165", "section": "All", "day": "Asenkron", "startTime": "00:00", "endTime": "00:00", "type": "lecture", "async": true },
+  { "courseCode": "İSG401", "section": "All", "day": "Asenkron", "startTime": "00:00", "endTime": "00:00", "type": "lecture", "async": true }
+]
