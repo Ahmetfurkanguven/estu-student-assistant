@@ -111,8 +111,8 @@ function shouldExcludeFromGPA(c: StudentRecord): boolean {
     // 4) Failed S excluded (passed S included)
     if (status === "S" && isFailedGrade(grade)) return true;
 
-    // 5) Extra safety: Erasmus placeholder TTTTxx failed excluded
-    if (/^TTTT\d+$/i.test(code) && isFailedGrade(grade)) return true;
+    // 5) Extra safety: Erasmus placeholder TTTxx failed excluded
+    if (/^TTT\d+$/i.test(code) && isFailedGrade(grade)) return true;
 
     return false;
 }

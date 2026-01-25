@@ -92,8 +92,15 @@ export function parseTranscriptText(text: string): StudentRecord[] {
                         // Regex tuttu
                         // Status bul: rest içinde veya grade'den sonra
                         const restTokens = rest.trim().split(/\s+/);
-                        if (restTokens.length > 0 && /^[A-Z]{1,4}$/.test(restTokens[0])) {
-                            finalStatus = restTokens[0];
+
+                        // "0.00 MS ..." gibi durumlarda numeric değerleri atla
+                        for (const rt of restTokens) {
+                            // Sadece harflerden oluşan kısa token statüdür (MS, S, Z, MUAF vb)
+                            // "EEM403" gibi sayı içerenleri alma, onlar ders kodudur
+                            if (/^[A-ZİĞÜŞÇÖ]{1,4}$/.test(rt)) {
+                                finalStatus = rt;
+                                break;
+                            }
                         }
                     }
 
@@ -120,8 +127,8 @@ export function parseTranscriptText(text: string): StudentRecord[] {
 
                     // --- AGGRESSIVE OVERRIDES START ---
                     // Force specific courses to strict exclusion if parser missed substitution
-                    if (code.startsWith('TTTT')) {
-                        // TTTT01, TTTT02, TTTT03 etc. MUST be skipped if failed.
+                    if (code.startsWith('TTT')) {
+                        // TTT01, TTT02, TTT03 etc. MUST be skipped if failed.
                         // If no substitution found, force one so calculator drops it.
                         if (!equivalentCourse && (foundGrade === 'FF' || foundGrade === 'DZ' || foundGrade === 'YZ')) {
                             equivalentCourse = 'PLACEHOLDER_SKIP';
