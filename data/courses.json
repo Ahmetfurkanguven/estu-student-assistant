@@ -1,0 +1,56 @@
+[
+  { "code": "MAT1011", "name": "Calculus I", "credits": 6, "ects": 7.5, "type": "zorunlu", "semester": 1 },
+  { "code": "FİZ105", "name": "Physics I", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 1 },
+  { "code": "FİZ107", "name": "Physics Laboratory I", "credits": 2, "ects": 1.5, "type": "zorunlu", "semester": 1 },
+  { "code": "KİM1005", "name": "General Chemistry", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 1 },
+  { "code": "BİM122", "name": "Discrete Computational Structures", "credits": 3, "ects": 5.0, "type": "zorunlu", "semester": 1 },
+  { "code": "TÜR125", "name": "Türk Dili I", "credits": 2, "ects": 2.0, "type": "zorunlu", "semester": 1 },
+
+  { "code": "MAT1012", "name": "Calculus II", "credits": 6, "ects": 7.5, "type": "zorunlu", "semester": 2, "prerequisites": ["MAT1011"] },
+  { "code": "FİZ106", "name": "Physics II", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 2, "prerequisites": ["FİZ105"] },
+  { "code": "FİZ108", "name": "Physics Laboratory II", "credits": 2, "ects": 1.5, "type": "zorunlu", "semester": 2, "prerequisites": ["FİZ107"] },
+  { "code": "MAT2021", "name": "Linear Algebra", "credits": 4, "ects": 4.5, "type": "zorunlu", "semester": 2 },
+  { "code": "EEM102", "name": "Introduction to Electrical Engineering", "credits": 6, "ects": 7.5, "type": "zorunlu", "semester": 2 },
+  { "code": "EEM104", "name": "Professional Aspects of EEE", "credits": 2, "ects": 3.0, "type": "zorunlu", "semester": 2 },
+  { "code": "TÜR126", "name": "Türk Dili II", "credits": 2, "ects": 2.0, "type": "zorunlu", "semester": 2 },
+
+  { "code": "MAT2011", "name": "Differential Equations", "credits": 4, "ects": 4.5, "type": "zorunlu", "semester": 3, "prerequisites": ["MAT1012"] },
+  { "code": "MAT2093", "name": "Engineering Mathematics", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 3 },
+  { "code": "EEM209", "name": "Circuit Analysis I", "credits": 5, "ects": 7.5, "type": "zorunlu", "semester": 3, "prerequisites": ["EEM102"] },
+  { "code": "EEM206", "name": "Electrical Circuits Laboratory", "credits": 3, "ects": 3.0, "type": "zorunlu", "semester": 3, "prerequisites": ["EEM102"] },
+  { "code": "BİL200", "name": "Computer Programming", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 3 },
+  { "code": "TAR165", "name": "Atatürk İlkeleri ve İnkılap Tarihi I", "credits": 2, "ects": 2.0, "type": "zorunlu", "semester": 3 },
+
+  { "code": "EEM208", "name": "Electromagnetic Fields and Waves", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 4, "prerequisites": ["MAT2093"] },
+  { "code": "EEM232", "name": "Digital Systems I", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 4 },
+  { "code": "EEM238", "name": "Digital Systems Laboratory", "credits": 2, "ects": 2.0, "type": "zorunlu", "semester": 4 },
+  { "code": "İST2044", "name": "Engineering Probability", "credits": 4, "ects": 5.0, "type": "zorunlu", "semester": 4 },
+  { "code": "EEM210", "name": "Fundamentals of Semiconductor Devices", "credits": 3, "ects": 5.0, "type": "zorunlu", "semester": 4 },
+  { "code": "TAR166", "name": "Atatürk İlkeleri ve İnkılap Tarihi II", "credits": 2, "ects": 2.0, "type": "zorunlu", "semester": 4 },
+
+  { "code": "EEM301", "name": "Signals and Systems", "credits": 4, "ects": 6.0, "type": "zorunlu", "semester": 5, "prerequisites": ["MAT2011"] },
+  { "code": "EEM311", "name": "Principles of Energy Conversion", "credits": 5, "ects": 6.0, "type": "zorunlu", "semester": 5, "prerequisites": ["EEM208"] },
+  { "code": "EEM321", "name": "Electronics I", "credits": 3, "ects": 5.0, "type": "zorunlu", "semester": 5, "prerequisites": ["EEM210"] },
+  { "code": "EEM328", "name": "Electronics Laboratory", "credits": 3, "ects": 3.0, "type": "zorunlu", "semester": 5 },
+  { "code": "İKT151", "name": "Economics", "credits": 3, "ects": 3.0, "type": "zorunlu", "semester": 5 },
+
+  { "code": "EEM308", "name": "Introduction to Communications", "credits": 5, "ects": 7.0, "type": "zorunlu", "semester": 6, "prerequisites": ["EEM301"] },
+  { "code": "EEM336", "name": "Microprocessors I", "credits": 5, "ects": 7.0, "type": "zorunlu", "semester": 6 },
+  { "code": "EEM342", "name": "Fundamentals of Control Systems", "credits": 5, "ects": 7.0, "type": "zorunlu", "semester": 6, "prerequisites": ["EEM301"] },
+
+  { "code": "EEM413", "name": "EEE Design Project I", "credits": 6, "ects": 4.5, "type": "zorunlu", "semester": 7 },
+  { "code": "EEM415", "name": "Engineering Design and Research", "credits": 2, "ects": 3.0, "type": "zorunlu", "semester": 7 },
+
+  { "code": "EEM414", "name": "EEE Design Project II", "credits": 6, "ects": 4.5, "type": "zorunlu", "semester": 8, "prerequisites": ["EEM413"] },
+
+  { "code": "EEM409", "name": "Random Signals", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM467", "name": "Digital Communications", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM477", "name": "Digital Signal Processing", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM471", "name": "Electrical Machinery I", "credits": 4, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM473", "name": "Power Systems Analysis I", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM475", "name": "Power Electronics I", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM491", "name": "Linear Control Systems", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM480", "name": "Algorithms and Complexity", "credits": 3, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM449", "name": "Embedded System Design", "credits": 4, "ects": 5.0, "type": "mesleki_secmeli" },
+  { "code": "EEM4503", "name": "Digital Systems Design with VHDL and FPGA", "credits": 5, "ects": 5.0, "type": "mesleki_secmeli" }
+]

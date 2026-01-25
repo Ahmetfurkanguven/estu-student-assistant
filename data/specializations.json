@@ -1,0 +1,50 @@
+[
+  {
+    "id": "electronics",
+    "name": "Elektronik",
+    "nameEn": "Electronics",
+    "requiredCourses": ["EEM4501", "EEM403"],
+    "minCourses": 5,
+    "minECTS": 25
+  },
+  {
+    "id": "power",
+    "name": "Güç Sistemleri",
+    "nameEn": "Power Systems",
+    "requiredCourses": ["EEM471", "EEM473"],
+    "minCourses": 5,
+    "minECTS": 25
+  },
+  {
+    "id": "telecom",
+    "name": "Haberleşme",
+    "nameEn": "Telecommunications",
+    "requiredCourses": ["EEM409", "EEM467"],
+    "minCourses": 5,
+    "minECTS": 25
+  },
+  {
+    "id": "control",
+    "name": "Kontrol",
+    "nameEn": "Control",
+    "requiredCourses": ["EEM491"],
+    "minCourses": 5,
+    "minECTS": 25
+  },
+  {
+    "id": "digital",
+    "name": "Sayısal Sistemler",
+    "nameEn": "Digital Systems",
+    "requiredCourses": ["EEM449", "EEM480"],
+    "minCourses": 5,
+    "minECTS": 25
+  },
+  {
+    "id": "signal",
+    "name": "Sinyal İşleme",
+    "nameEn": "Signal Processing",
+    "requiredCourses": ["EEM409", "EEM477"],
+    "minCourses": 5,
+    "minECTS": 25
+  }
+]
