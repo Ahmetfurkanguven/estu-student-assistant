@@ -14,7 +14,8 @@ export const GRADE_SYSTEM = {
     FF: { coefficient: 0.0, passed: false },
     YT: { coefficient: 0.0, passed: true },
     YZ: { coefficient: 0.0, passed: false },
-    DZ: { coefficient: 0.0, passed: false }
+    DZ: { coefficient: 0.0, passed: false },
+    MS: { coefficient: 0.0, passed: true }
 };
 // Uzmanlaşma alanları. Her alan için gereken dersler ve minimum MS ders/AKTS bilgisi.
 export const SPECIALIZATION_AREAS = [

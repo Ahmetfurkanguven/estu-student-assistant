@@ -1,93 +1,249 @@
-import type { StudentRecord, GPAResult } from '../types';
+import type { StudentRecord, GPAResult } from "../types/index.js";
+import { normalizeCourseCode } from "./transcriptParser.js";
 
 /**
- * GPA hesaplaması. Kredi ağırlıklı not ortalamasını hesaplar. Yeterli (YT) dersler
- * ortalamaya katılmaz. En son alınan dersin notu geçerli sayılır.
+ * GPA Calculator - Final Robust Version
+ * Fixes:
+ * - Placeholder substitution courses excluded (MFALM102, TTTT02 etc.)
+ * - Parenthesis suffix codes like FİZ237(Tür), EEM403(İng) won't break matching
+ * - Course codes are safely extracted even if parser produced noisy tokens
+ * - "MS" status is NOT auto-excluded (EEM403 AA MS must count)
+ * - Failed "S" courses excluded, passed "S" courses included
+ * - Retake: best passed attempt wins
  */
+
+// ===========================
+// Grade Points (ESTÜ typical)
+// ===========================
+const gradePoints: Record<string, number> = {
+    AA: 4.0,
+    AB: 3.7,
+    BA: 3.3,
+    BB: 3.0,
+    BC: 2.7,
+    CB: 2.3,
+    CC: 2.0,
+    CD: 1.7,
+    DC: 1.3,
+    DD: 1.0,
+    FD: 0.5, // Some systems include FD with 0.5
+    FF: 0.0,
+    DZ: 0.0,
+    YZ: 0.0,
+    // YT has no grade point (not numeric)
+};
+
+function hasGradePoint(letter: string): boolean {
+    const g = (letter || "").toUpperCase();
+    return Object.prototype.hasOwnProperty.call(gradePoints, g);
+}
+
+function isFailedGrade(letter: string): boolean {
+    const g = (letter || "").toUpperCase();
+    // We treat FF / DZ / YZ as failed
+    return g === "FF" || g === "DZ" || g === "YZ";
+}
+
 /**
- * Dönemleri kronolojik olarak karşılaştırır
- * Örnek: "2024-2025 Güz Dönemi" > "2022-2023 Bahar Dönemi"
+ * Extract a safe normalized course code from noisy text.
+ * Examples:
+ *  - "FİZ237(Tür)" -> "FİZ237"
+ *  - "EEM403(İng)" -> "EEM403"
+ *  - "TTTT02Project" -> "TTTT02"
+ */
+function safeCourseCode(raw: string): string {
+    const text = (raw || "").split("(")[0].toUpperCase();
+
+    // find first "LETTERS+NUMBERS" pattern
+    const m = text.match(/[A-ZÇĞİÖŞÜ]{2,8}\d{2,4}/);
+    if (m?.[0]) return m[0];
+
+    // fallback to your existing normalizer
+    return normalizeCourseCode(raw);
+}
+
+// FIX: Allow undefined input to prevent TS errors since StudentRecord.status is optional
+function normalizeStatus(status?: string): string {
+    return (status || "").trim().toUpperCase();
+}
+
+/**
+ * Read substitution field from any possible naming used in codebase.
+ * - equivalentCourse (expected)
+ * - substitutedBy (new parser)
+ * - replacementCourse (alt naming)
+ */
+function getSubstitutionTarget(c: StudentRecord): string {
+    const eq =
+        (c as any).equivalentCourse ||
+        (c as any).substitutedBy ||
+        (c as any).replacementCourse ||
+        "";
+    return String(eq || "").trim();
+}
+
+/**
+ * Determine whether course should be excluded from GPA.
+ * Rules (robust):
+ * - If substitution exists => placeholder excluded ALWAYS
+ * - YT => excluded
+ * - MUAF => excluded
+ * - Status S + failed => excluded (but passed S included)
+ * - TTTT placeholder failed => excluded
+ * Notes:
+ * - MS is NOT auto-excluded (EEM403 AA MS must count)
+ */
+function shouldExcludeFromGPA(c: StudentRecord): boolean {
+    const code = safeCourseCode(c.courseCode);
+    const grade = (c.grade?.letter || "").toUpperCase();
+    const status = normalizeStatus(c.status);
+    const sub = getSubstitutionTarget(c);
+
+    // 1) Substitution placeholder always excluded
+    if (sub.length > 0) return true;
+
+    // 2) No-grade courses excluded
+    if (grade === "YT") return true;
+
+    // 3) Muaf excluded
+    if (status === "MUAF") return true;
+
+    // 4) Failed S excluded (passed S included)
+    if (status === "S" && isFailedGrade(grade)) return true;
+
+    // 5) Extra safety: Erasmus placeholder TTTTxx failed excluded
+    if (/^TTTT\d+$/i.test(code) && isFailedGrade(grade)) return true;
+
+    return false;
+}
+
+/**
+ * Semester comparison to sort attempts chronologically if needed.
+ * "2024-2025 Güz" > "2023-2024 Bahar"
  */
 function compareSemesters(sem1: string, sem2: string): number {
-    // Simülasyon her zaman en son dönemdir
-    if (sem1 === 'Simülasyon') return 1;
-    if (sem2 === 'Simülasyon') return -1;
+    if (sem1 === "Simülasyon") return 1;
+    if (sem2 === "Simülasyon") return -1;
 
-    // Yıl ve dönem bilgisini çıkar
     const match1 = sem1.match(/(\d{4})-(\d{4})\s+(Güz|Bahar|Yaz)/i);
     const match2 = sem2.match(/(\d{4})-(\d{4})\s+(Güz|Bahar|Yaz)/i);
-
     if (!match1 || !match2) return 0;
 
-    const year1 = parseInt(match1[1]);
-    const year2 = parseInt(match2[1]);
-
-    // Önce yıla göre karşılaştır
+    const year1 = parseInt(match1[1], 10);
+    const year2 = parseInt(match2[1], 10);
     if (year1 !== year2) return year1 - year2;
 
-    // Yıl aynıysa döneme göre (Güz=1, Bahar=2, Yaz=3)
-    const termOrder: Record<string, number> = { 'güz': 1, 'bahar': 2, 'yaz': 3 };
-    const term1 = termOrder[match1[3].toLowerCase()] || 0;
-    const term2 = termOrder[match2[3].toLowerCase()] || 0;
+    const termOrder: Record<string, number> = { güz: 1, bahar: 2, yaz: 3 };
+    const t1 = termOrder[match1[3].toLowerCase()] || 0;
+    const t2 = termOrder[match2[3].toLowerCase()] || 0;
+    return t1 - t2;
+}
 
-    return term1 - term2;
+/**
+ * Choose best attempt for repeated course codes.
+ * Spec wanted best passed attempt. If none passed, choose latest attempt.
+ */
+function chooseBestAttempt(attempts: StudentRecord[]): StudentRecord {
+    // passed attempts first (based on record flag)
+    const passed = attempts.filter((a) => a.grade?.passed === true);
+
+    if (passed.length > 0) {
+        // Choose highest grade point among passed
+        return passed.sort((a, b) => {
+            const ga = (a.grade?.letter || "").toUpperCase();
+            const gb = (b.grade?.letter || "").toUpperCase();
+            return (gradePoints[gb] ?? 0) - (gradePoints[ga] ?? 0);
+        })[0];
+    }
+
+    // if all failed -> choose latest semester attempt
+    return attempts
+        .slice()
+        .sort((a, b) => compareSemesters(a.semester, b.semester))
+        .pop()!;
 }
 
 export function calculateGPA(records: StudentRecord[]): GPAResult {
-    // Aynı dersi birden fazla aldıysa en son alınanı tutmak için Map kullanılır
-    const latestRecords = new Map<string, StudentRecord>();
-    for (const record of records) {
-        const existing = latestRecords.get(record.courseCode);
-        if (!existing || compareSemesters(record.semester, existing.semester) > 0) {
-            if (existing) {
-                console.log(`${record.courseCode}: ${existing.semester} (${existing.grade.letter}) -> ${record.semester} (${record.grade.letter})`);
-            }
-            latestRecords.set(record.courseCode, record);
-        }
+    // 1) Only take courses with numeric grade points (FF included, YT excluded)
+    const eligible = records.filter((c) => hasGradePoint(c.grade?.letter || ""));
+
+    // 2) Group by safe course code (robust)
+    const byCode = new Map<string, StudentRecord[]>();
+    for (const c of eligible) {
+        const code = safeCourseCode(c.courseCode);
+        if (!byCode.has(code)) byCode.set(code, []);
+        byCode.get(code)!.push(c);
     }
 
-    console.log('=== GNO HESAPLAMASI ===');
-    let totalWeightedGrade = 0;
-    let totalCredits = 0;
-    let passedCredits = 0;
+    // 3) Resolve retakes (best attempt)
+    const resolvedAttempts: StudentRecord[] = [];
+    for (const [, attempts] of byCode.entries()) {
+        resolvedAttempts.push(chooseBestAttempt(attempts));
+    }
+
+    // 4) Apply exclusion rules
+    const included: StudentRecord[] = [];
+    const excluded: StudentRecord[] = [];
+
+    for (const c of resolvedAttempts) {
+        if (shouldExcludeFromGPA(c)) excluded.push(c);
+        else included.push(c);
+    }
+
+    // 5) Calculate GPA
     let totalECTS = 0;
-    const usedCourses: StudentRecord[] = [];
-    for (const record of latestRecords.values()) {
-        // Sadece YT notlu dersler GNO'ya katılmaz
-        if (record.grade.letter !== 'YT') {
-            // Okul sistemi her dersin (Kredi * Not) puanını 2 basamağa yuvarlayıp topluyor
-            const rawPoints = record.grade.coefficient * record.credits;
-            const weighted = Math.round(rawPoints * 100) / 100;
+    let totalPoints = 0;
+    let totalAttempted = 0;
+    let passedCredits = 0;
 
-            totalWeightedGrade += weighted;
-            totalCredits += record.credits;
-            usedCourses.push(record);
-            console.log(`${record.courseCode}: ${record.grade.letter} x ${record.credits} = ${weighted.toFixed(2)}`);
-        }
-        totalECTS += record.ects;
-        if (record.grade.passed) {
-            passedCredits += record.credits;
-        }
+    for (const c of included) {
+        const grade = (c.grade?.letter || "").toUpperCase();
+        const ects = Number(c.ects) || 0;
+        const p = gradePoints[grade] ?? 0;
+
+        totalECTS += ects;
+        totalPoints += ects * p;
+        totalAttempted += ects;
+
+        if (c.grade?.passed) passedCredits += ects;
     }
-    console.log(`Toplam Kredi: ${totalCredits}`);
-    console.log(`Toplam Ağırlıklı Not: ${totalWeightedGrade.toFixed(2)}`);
-    const gno = totalCredits > 0 ? totalWeightedGrade / totalCredits : 0;
-    console.log(`GNO: ${totalWeightedGrade.toFixed(2)} / ${totalCredits} = ${gno.toFixed(2)}`);
-    console.log('=== GNO HESAPLAMASI SONU ===');
 
-    // Dersleri dönem ve koda göre sırala
-    usedCourses.sort((a, b) => {
-        const semComparison = compareSemesters(a.semester, b.semester);
-        if (semComparison !== 0) return semComparison;
-        return a.courseCode.localeCompare(b.courseCode);
-    });
+    const rawGPA = totalECTS > 0 ? totalPoints / totalECTS : 0;
+
+    // ✅ Debug prints (you can remove later)
+    console.log("=== GPA DEBUG ===");
+    console.log("TOTAL ECTS:", totalECTS, "TOTAL POINTS:", totalPoints, "GPA:", rawGPA);
+
+    console.log(
+        "INCLUDED:",
+        included.map((c) => [
+            safeCourseCode(c.courseCode),
+            (c.grade?.letter || "").toUpperCase(),
+            c.ects,
+            normalizeStatus(c.status),
+            getSubstitutionTarget(c),
+        ])
+    );
+
+    console.log(
+        "EXCLUDED:",
+        excluded.map((c) => [
+            safeCourseCode(c.courseCode),
+            (c.grade?.letter || "").toUpperCase(),
+            c.ects,
+            normalizeStatus(c.status),
+            getSubstitutionTarget(c),
+        ])
+    );
 
     return {
-        gno: Math.round(gno * 100) / 100,
-        dno: gno,
-        totalCredits,
-        passedCredits,
-        totalECTS,
-        usedCourses
+        gno: Math.round(rawGPA * 100) / 100,
+        dno: rawGPA,
+        totalCredits: totalECTS,
+        passedCredits: passedCredits,
+        totalECTS: totalECTS,
+        totalAttempted: totalAttempted,
+        usedCourses: included.sort((a, b) => compareSemesters(a.semester, b.semester)),
+        replacedCourses: excluded,
     };
 }

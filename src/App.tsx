@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, BookOpen, GraduationCap, Calendar, BarChart, ChevronRight, CheckCircle, AlertCircle, Trash2, Github, FileText, Download, BarChart3, CheckCircle2, Calculator, TrendingUp, Info, Award, ShieldCheck } from 'lucide-react';
+import { Upload, BookOpen, GraduationCap, Calendar, BarChart, ChevronRight, CheckCircle, AlertCircle, Trash2, Github, FileText, Download, BarChart3, CheckCircle2, Calculator, TrendingUp, Info, Award, ShieldCheck, Languages } from 'lucide-react';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -7,69 +7,17 @@ import { Upload, BookOpen, GraduationCap, Calendar, BarChart, ChevronRight, Chec
 import { generateCourseProposal, ProposedCourse } from './utils/courseSelectionRules';
 import { detectScheduleConflicts, parseScheduleFromItems } from './utils/scheduleUtils';
 import { generateAcademicReport } from './utils/reportGenerator';
+import { translations } from './data/locales';
 
-interface Course {
-  code: string;
-  name: string;
-  credits: number;
-  ects: number;
-  type: 'zorunlu' | 'mesleki_secmeli' | 'secmeli' | 'universite_secmeli';
-  prerequisites?: string[];
-  semester?: number;
-}
-
-interface Grade {
-  letter: string;
-  coefficient: number;
-  passed: boolean;
-}
-
-interface StudentRecord {
-  id: string;
-  courseCode: string;
-  courseName: string;
-  semester: string;
-  credits: number;
-  ects: number;
-  grade: Grade;
-  retake?: boolean;
-}
-
-interface ScheduleOffering {
-  courseCode: string;
-  section: string;
-  day: string;
-  startTime: string;
-  endTime: string;
-  room?: string;
-  type: 'lecture' | 'lab';
-  async?: boolean;
-}
-
-interface GPAResult {
-  gno: number;
-  dno: number;
-  totalCredits: number;
-  passedCredits: number;
-  totalECTS: number;
-  totalAttempted: number; // Toplam denenen kredi (tekrar edilenler dahil değil, sadece son kayıtlar)
-  usedCourses?: StudentRecord[]; // make optional initially to avoid strict parsing issues
-}
-
-interface SpecializationArea {
-  id: string;
-  name: string;
-  nameEn: string;
-  requiredCourses: string[];
-  minCourses: number;
-  minECTS: number;
-}
-
-interface IntibakMapping {
-  oldCode: string;
-  newCode: string;
-  note: string;
-}
+import {
+  Course,
+  Grade,
+  StudentRecord,
+  ScheduleOffering,
+  GPAResult,
+  SpecializationArea,
+  IntibakMapping
+} from './types';
 
 // ============================================================================
 // COMPREHENSIVE DATA
@@ -165,6 +113,7 @@ const ALL_COURSES: Course[] = [
 // Uzmanlaşma alanları. Her alan için gereken dersler ve minimum MS ders/AKTS bilgisi.
 import { analyzeSpecializations } from './utils/specializationUtils';
 import { SPECIALIZATION_GROUPS } from './data/specializationGroups';
+import { VisitorCounter } from './components/VisitorCounter';
 
 
 
@@ -201,85 +150,7 @@ const SAMPLE_SCHEDULES: ScheduleOffering[] = [
  * harf notu bilgilerini ayıklar. Dönem başlıklarını (YYYY-YYYY GÜZ/BAHAR) de
  * tespit eder ve kayıtları buna göre etiketler.
  */
-function parseTranscriptAdvanced(text: string): StudentRecord[] {
-  const records: StudentRecord[] = [];
-  const lines = text.split('\n');
-  let currentSemester = '';
-
-  for (const line of lines) {
-    // Dönem başlığı kontrolü - çeşitli formatlar:
-    // 1. "2022-2023 Güz Dönemi" veya "2022-2023 Yaz Okulu"
-    // 2. "2023-2024 Transfer Dersler (Gazi Üniversitesi)" - DGS öğrencileri için
-    // 3. "2022-2023 Bahar Dönemi"
-
-    if (/\d{4}-\d{4}\s+(Güz|Bahar|Yaz|GÜZ|BAHAR|YAZ)/i.test(line) && /(Dönem|Okulu)/i.test(line)) {
-      currentSemester = line.trim();
-      console.log('Dönem bulundu:', currentSemester);
-      continue;
-    }
-
-    // Transfer dersler formatı - DGS ile gelenler için
-    if (/\d{4}-\d{4}\s+Transfer\s+Dersler/i.test(line)) {
-      currentSemester = line.trim();
-      console.log('Transfer dönemi bulundu:', currentSemester);
-      continue;
-    }
-
-    // Ders satırı kontrolü için PDF formatı:
-    // Kodu   Ders Adı   AKTS Kredisi   Not   Kredi*Not   Statü
-    // BİM122   Discrete Computational Structures (...)   5.0   CD   8.50   Z
-
-    // Önce ders kodunu ara (satır başında)
-    const codeMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+/);
-    if (codeMatch && currentSemester) {
-      const code = codeMatch[1];
-
-      // Satırın geri kalanını parçalara ayır (birden fazla boşluk veya tab ile)
-      const parts = line.split(/\s{2,}|\t+/).filter(p => p.trim());
-
-      if (parts.length >= 4) {
-        // parts[0] = Kod
-        // parts[1] = Ders Adı
-        // parts[2] = AKTS Kredisi (sayı)
-        // parts[3] = Not (harf)
-        // parts[4] = Kredi*Not (sayı - atlanabilir)
-        // parts[5] = Statü (Z veya S)
-
-        const courseName = parts[1];
-        let aktsStr = parts[2];
-        const gradeStr = parts[3];
-        const status = parts.length >= 6 ? parts[5] : 'Z'; // Son kolon statü (sadece bilgi amaçlı)
-
-        // AKTS ve not bilgisini parse et
-        // Transfer derslerde format "D 2.0" olabilir, "D" harfini temizle
-        aktsStr = aktsStr.replace(/^[A-Za-z]\s*/, '').trim();
-        const akts = parseFloat(aktsStr);
-        const gradeLetter = gradeStr.toUpperCase();
-
-        // Not sisteminde varsa devam et
-        const gradeInfo = GRADE_SYSTEM[gradeLetter];
-        if (gradeInfo && !isNaN(akts)) {
-          // Tüm dersler GNO'ya katılır (sadece YT hariç)
-          records.push({
-            id: `${code}-${currentSemester}`,
-            courseCode: code,
-            courseName: courseName.trim(),
-            semester: currentSemester,
-            credits: akts, // AKTS değerini olduğu gibi kullan (5.0, 7.5 vs)
-            ects: akts,
-            grade: {
-              letter: gradeLetter,
-              coefficient: gradeInfo.coefficient,
-              passed: gradeInfo.passed
-            }
-          });
-          console.log(`Ders eklendi: ${code} - ${gradeLetter} - ${akts} Kredi - Statü: ${status}`);
-        }
-      }
-    }
-  }
-  return records;
-}
+import { parseTranscriptText as parseTranscriptAdvanced } from './utils/transcriptParser';
 
 /**
  * İntibak (kod değişikliği) uygulanmış kayıtları döndürür. Eğer kayıt eski bir koda
@@ -405,11 +276,11 @@ function checkPrerequisites(courseCode: string, completedCourses: Set<string>): 
  * EEM413/414 alma uygunluğunu kontrol eder. GNO ≥ 2.00 ve (ilk 4 yarıyıl zorunlu
  * dersler tamamlanmış VEYA en az 180 AKTS) kriterlerini kullanır.
  */
-function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eligible: boolean; reasons: string[] } {
+function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult, t: any): { eligible: boolean; reasons: string[] } {
   const reasons: string[] = [];
 
   if (gpa.gno < 2.0) {
-    reasons.push(`GNO yetersiz: ${gpa.gno.toFixed(2)} < 2.00`);
+    reasons.push(`${t('reason_gno_fail')}: ${gpa.gno.toFixed(2)} < 2.00`);
   }
 
   // KURAL: İlk 4 yarıyılın tüm zorunlu dersleri tamamlanmış olmalı VEYA 180 AKTS tamamlanmış olmalı.
@@ -447,19 +318,19 @@ function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eli
   // KURAL KONTROLÜ
   // Eğer (Eksik Ders > 0) VE (AKTS < 180) -> ELIGIBLE DEĞİL
   if (missingCourses.length > 0 && gpa.totalECTS < 180) {
-    reasons.push('Bu dersi almak için EN AZ BİR koşulu sağlamanız gerekir:');
-    reasons.push('1. İlk 4 yarıyılın zorunlu derslerini tamamlamak (Eksikleriniz var)');
-    reasons.push('2. En az 180 AKTS tamamlamak');
-    reasons.push(`Eksik Dersler: ${missingCourses.join(', ')}`);
+    reasons.push(t('reason_cond_fail'));
+    reasons.push(t('reason_cond_1'));
+    reasons.push(t('reason_cond_2'));
+    reasons.push(`${t('reason_missing_courses')} ${missingCourses.join(', ')}`);
 
     // İntibak bilgisini de gösterelim ki kullanıcı dönüşümü görsün
     if (mappedDebug.length > 0) {
-      reasons.push(`Uygulanan İntibaklar: ${mappedDebug.join(', ')}`);
+      reasons.push(`${t('reason_intibak')} ${mappedDebug.join(', ')}`);
     }
     // DETAYLI DEBUG BİLGİSİ (Sorunu çözmek için)
-    reasons.push('--- TEKNİK DETAYLAR ---');
-    reasons.push(`Beklenen Zorunlu Dersler (${firstFourSemesterCourses.length}): ${firstFourSemesterCourses.sort().join(', ')}`);
-    reasons.push(`Tespit Edilen Geçilmiş Dersler (${completedSet.size}): ${Array.from(completedSet).sort().join(', ')}`);
+    reasons.push('--- DEBUG ---');
+    reasons.push(`Target: ${firstFourSemesterCourses.length} courses`);
+    reasons.push(`Found: ${completedSet.size} courses`);
   }
 
   return {
@@ -477,6 +348,9 @@ function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eli
 // ============================================================================
 
 export default function App() {
+  const [lang, setLang] = useState<'tr' | 'en'>('tr');
+  const t = (key: keyof typeof translations['tr']) => translations[lang][key];
+
   const [step, setStep] = useState(1);
   const [transcriptText, setTranscriptText] = useState('');
   const [records, setRecords] = useState<StudentRecord[]>([]);
@@ -939,19 +813,29 @@ export default function App() {
   // Geçilen dersler kümesi
   const completedCourses = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
   // EEM413/414 kontrolü
-  const eem413Check = gpa ? checkEEM413Eligibility(records, gpa) : null;
+  const eem413Check = gpa ? checkEEM413Eligibility(records, gpa, t) : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <header className="bg-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-xl md:text-3xl font-bold text-indigo-900 leading-tight text-center md:text-left">
-            <span className="md:hidden">ESTÜ EEM Akademik Planlama Sistemi</span>
-            <span className="hidden md:block">ESTÜ Elektrik Elektronik Mühendisliği Akademik Planlama Sistemi</span>
-          </h1>
-          <p className="mt-2 text-gray-600 font-medium">
-            Ahmet Furkan Güven tarafından geliştirilmiştir.
-          </p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-3xl font-bold text-indigo-900 leading-tight text-center md:text-left">
+              <span className="md:hidden">{t('header_title_mobile')}</span>
+              <span className="hidden md:block">{t('header_title_desktop')}</span>
+            </h1>
+            <p className="mt-2 text-gray-600 font-medium text-center md:text-left">
+              {t('header_subtitle')}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setLang(lang === 'tr' ? 'en' : 'tr')}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-full transition-colors font-medium self-center md:self-auto"
+          >
+            <Languages size={20} />
+            <span>{lang.toUpperCase()}</span>
+          </button>
         </div>
       </header>
 
@@ -959,11 +843,11 @@ export default function App() {
         {/* Progress Steps */}
         <div className="flex items-center justify-between mb-8 overflow-x-auto">
           {[
-            { num: 1, label: 'Transkript', icon: Upload },
-            { num: 2, label: 'GPA & Senaryo', icon: Calculator },
-            { num: 3, label: 'Uzmanlaşma', icon: Award },
-            { num: 4, label: 'Ders Programı', icon: Calendar },
-            { num: 5, label: 'Rapor', icon: Download }
+            { num: 1, label: t('step_transcript'), icon: Upload },
+            { num: 2, label: t('step_gpa'), icon: Calculator },
+            { num: 3, label: t('step_specialization'), icon: Award },
+            { num: 4, label: t('step_schedule'), icon: Calendar },
+            { num: 5, label: t('step_report'), icon: Download }
           ].map(({ num, label, icon: Icon }) => (
             <div key={num} className="flex items-center">
               <button
@@ -984,7 +868,7 @@ export default function App() {
         {/* Step 1: Upload */}
         {step === 1 && (
           <div className="bg-white rounded-xl shadow-lg p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">📄 Transkript Yükleme + İntibak</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('upload_title')}</h2>
             <div className="mb-4 flex items-center">
               <input
                 type="checkbox"
@@ -994,13 +878,13 @@ export default function App() {
                 className="w-4 h-4 text-indigo-600 rounded"
               />
               <label htmlFor="intibak" className="ml-2 text-sm text-gray-700">
-                Otomatik intibak uygula (EMAT111→MAT1011, EKİM105→KİM1005, vb.)
+                {t('upload_intibak_checkbox')}
               </label>
             </div>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
               <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <span className="mt-2 block text-sm font-medium text-gray-900">
-                TXT veya PDF transkript yükleyin
+                {t('upload_box_text')}
               </span>
 
               {/* Gerçek file input (gizli) */}
@@ -1017,7 +901,7 @@ export default function App() {
                 htmlFor="transcriptFile"
                 className="mt-4 inline-flex items-center justify-center px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer select-none"
               >
-                Dosya Seç
+                {t('upload_button')}
               </label>
 
             </div>
@@ -1026,13 +910,13 @@ export default function App() {
               <div className="flex items-start">
                 <Info className="h-5 w-5 text-blue-600 mt-0.5 mr-3" />
                 <div className="text-sm text-blue-800">
-                  <p className="font-medium mb-2">✅ Yenilikler v2.0:</p>
+                  <p className="font-medium mb-2">{t('upload_info_title')}</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>PDF Parser (pdf.js entegrasyonu)</li>
-                    <li>İntibak motoru (eski→yeni ders kodları)</li>
-                    <li>6 uzmanlaşma alanı + zorunlu ders kontrolü</li>
-                    <li>Ders programı parser + çakışma analizi</li>
-                    <li>EEM413/414 güncel kurallar (180 AKTS VEYA ilk 4 yarıyıl)</li>
+                    <li>{t('upload_info_1')}</li>
+                    <li>{t('upload_info_2')}</li>
+                    <li>{t('upload_info_3')}</li>
+                    <li>{t('upload_info_4')}</li>
+                    <li>{t('upload_info_5')}</li>
                   </ul>
                 </div>
               </div>
@@ -1045,7 +929,7 @@ export default function App() {
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">GNO hesaplanıyor...</p>
+              <p className="text-gray-600">{t('calculating')}</p>
             </div>
           </div>
         )}
@@ -1058,51 +942,46 @@ export default function App() {
                   <BarChart3 className="w-8 h-8 text-indigo-600" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">GNO/DNO Analizi</h2>
-                  <p className="text-gray-500">Akademik başarı durumunuzun detaylı analizi</p>
+                  <h2 className="text-2xl font-bold text-gray-800">{t('gpa_title')}</h2>
+                  <p className="text-gray-500">{t('gpa_subtitle')}</p>
                 </div>
               </div>
 
               <button
                 onClick={() => {
-                  // Geçilen dersleri bul
                   const passedCodes = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
-
-                  // Analiz sayfası içinde simülasyon verileri varsa rapora ekle
-                  // simulationRecords state'i doluysa hesaplama yap
                   const simResult = simulationRecords.length > 0 ? calculateGPA(simulationRecords) : null;
-
                   generateAcademicReport({
                     studentName: 'Öğrenci',
                     studentId: '123456789',
                     department: 'Elektrik-Elektronik Mühendisliği',
                     gpa: gpa,
-                    // Sadece sonradan geçilmemiş olan başarısız dersleri listele
                     failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
                     allRecords: records,
                     simulationGpa: simResult,
-                    simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined
+                    simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined,
+                    lang: lang
                   });
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
               >
                 <Download size={18} />
-                <span>Raporu İndir</span>
+                <span>{t('download_report')}</span>
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className={`p-6 rounded-2xl shadow-lg transform hover:scale-[1.02] transition-all duration-300 ${gpa.gno >= 3.0 ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white' : gpa.gno >= 2.0 ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white' : 'bg-gradient-to-br from-orange-500 to-red-500 text-white'}`}>
-                <div className="text-white/80 text-sm font-medium mb-1">Genel Not Ortalaması</div>
+                <div className="text-white/80 text-sm font-medium mb-1">{t('gno_label')}</div>
                 <div className="text-5xl font-bold tracking-tight">{gpa.gno.toFixed(2)}</div>
                 <div className="mt-4 flex items-center gap-2 text-white/90 bg-white/10 p-2 rounded-lg backdrop-blur-sm">
                   {gpa.gno >= 2.0 ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-                  <span className="font-medium">{gpa.gno >= 2.0 ? 'Başarılı' : 'Akademik Yetersizlik'}</span>
+                  <span className="font-medium">{t(gpa.gno >= 2.0 ? 'status_success' : 'status_fail')}</span>
                 </div>
               </div>
 
               <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="text-gray-500 text-sm font-medium mb-1">Toplam AKTS</div>
+                <div className="text-gray-500 text-sm font-medium mb-1">{t('total_ects')}</div>
                 <div className="text-4xl font-bold text-gray-800 tracking-tight">{gpa.totalECTS}</div>
                 <div className="mt-4 w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                   <div
@@ -1110,34 +989,31 @@ export default function App() {
                     style={{ width: `${Math.min((gpa.totalECTS / 240) * 100, 100)}%` }}
                   ></div>
                 </div>
-                <div className="mt-2 text-xs text-gray-400 font-medium">Mezuniyet: 240 AKTS</div>
+                <div className="mt-2 text-xs text-gray-400 font-medium">{t('graduation_goal')}</div>
               </div>
 
               <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="text-gray-500 text-sm font-medium mb-1">Geçilen Kredi</div>
+                <div className="text-gray-500 text-sm font-medium mb-1">{t('passed_credits')}</div>
                 <div className="text-4xl font-bold text-gray-800 tracking-tight flex items-baseline gap-2">
                   {gpa.passedCredits}
                   <span className="text-xl text-gray-400 font-normal">/{gpa.totalAttempted}</span>
                 </div>
                 <div className="mt-4 text-sm font-medium text-blue-600 bg-blue-50 py-1 px-3 rounded-full w-fit">
-                  %{gpa.totalAttempted > 0 ? Math.min(100, Math.round((gpa.passedCredits / gpa.totalAttempted) * 100)) : 0} başarı
+                  %{gpa.totalAttempted > 0 ? Math.min(100, Math.round((gpa.passedCredits / gpa.totalAttempted) * 100)) : 0} {t('success_rate_suffix')}
                 </div>
               </div>
             </div>
 
-
-            {/* Removed Hesaplama Detayları table - simplified UX */}
-
             {eem413Check && (
               <div className="bg-white rounded-xl shadow-lg p-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">🎓 EEM413/414 Uygunluk Kontrolü</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('eem413_title')}</h2>
                 {eem413Check.eligible ? (
                   <div className="flex items-center p-4 bg-green-50 border border-green-200 rounded-lg">
                     <CheckCircle className="h-6 w-6 text-green-600 mr-3" />
                     <div>
-                      <p className="font-medium text-green-900">Design Project derslerini alabilirsiniz!</p>
+                      <p className="font-medium text-green-900">{t('eem413_success_msg')}</p>
                       <p className="text-sm text-green-700 mt-1">
-                        ✅ GNO ≥ 2.00 VE (İlk 4 yarıyıl zorunlu dersleri VEYA 180+ AKTS)
+                        {t('eem413_success_detail')}
                       </p>
                     </div>
                   </div>
@@ -1146,7 +1022,7 @@ export default function App() {
                     <div className="flex items-start">
                       <AlertCircle className="h-6 w-6 text-red-600 mr-3 mt-0.5" />
                       <div>
-                        <p className="font-medium text-red-900 mb-2">Eksik koşullar:</p>
+                        <p className="font-medium text-red-900 mb-2">{t('eem413_fail_msg')}</p>
                         <ul className="text-sm text-red-700 space-y-1">
                           {eem413Check.reasons.map((reason, i) => (
                             <li key={i}>• {reason}</li>
@@ -1159,20 +1035,20 @@ export default function App() {
               </div>
             )}
             <div className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">📚 Ders Kayıtları ({records.length})</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('course_list_title')} ({gpa.usedCourses.length})</h2>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kod</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ders</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dönem</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Not</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">AKTS</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col_code')}</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col_name')}</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col_term')}</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('col_grade')}</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('col_ects')}</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {(showAllRecords ? records : records.slice(0, 15)).map((record) => (
+                    {(showAllRecords ? gpa.usedCourses : gpa.usedCourses.slice(0, 15)).map((record) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.courseCode}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{record.courseName}</td>
@@ -1191,16 +1067,39 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              {records.length > 15 && (
+
+              {/* Replaced Courses Footer */}
+              {gpa.replacedCourses && gpa.replacedCourses.length > 0 && (
+                <div className="bg-slate-50 px-4 py-4 mt-4 border border-slate-200 rounded-lg text-xs text-slate-500">
+                  <div className="font-medium mb-2 flex items-center gap-1 text-slate-700">
+                    <Info className="w-4 h-4" />
+                    Bu dersler yerine sayıldığı için ortalamaya katılmamıştır:
+                  </div>
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {gpa.replacedCourses.map(rc => (
+                      <li key={rc.id} className="flex items-center gap-2 bg-white p-2 rounded border border-gray-100">
+                        <span className="font-bold text-gray-700">{rc.courseCode}</span>
+                        <span className="text-gray-400">|</span>
+                        <span className="bg-red-50 text-red-700 px-1.5 py-0.5 rounded text-[10px] font-bold">{rc.grade.letter}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="text-gray-600 truncate max-w-[150px]" title={rc.courseName}>{rc.courseName}</span>
+                        <span className="text-gray-400 text-[10px] ml-auto">{rc.equivalentCourse ? `(Yerine: ${rc.equivalentCourse})` : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {gpa.usedCourses.length > 15 && (
                 <div className="mt-4 text-center">
                   <button
                     onClick={() => setShowAllRecords(!showAllRecords)}
                     className="px-6 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
                   >
                     {showAllRecords ? (
-                      <>📤 Daha Az Göster (İlk 15)</>
+                      <>{t('show_less')}</>
                     ) : (
-                      <>📥 Tüm Dersleri Göster ({records.length - 15} ders daha)</>
+                      <>{t('show_more')} ({gpa.usedCourses.length - 15} {t('show_more_suffix')}</>
                     )}
                   </button>
                 </div>
@@ -1210,21 +1109,21 @@ export default function App() {
             <div id="simulation-section" className="mt-12 pt-8 border-t border-gray-200">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">🧪 GNO Simülasyonu & Senaryo</h2>
-                  <p className="text-gray-500">Notlarınızı aşağıdan değiştirerek veya yeni ders ekleyerek ortalamanızı tahmin edin.</p>
+                  <h2 className="text-2xl font-bold text-gray-800">{t('sim_title')}</h2>
+                  <p className="text-gray-500">{t('sim_desc')}</p>
                 </div>
               </div>
 
-              {/* Simulation Dashboard (Copied from old Step 3) */}
+              {/* Simulation Dashboard */}
               {simGpaResult && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-200">
-                      <div className="text-sm text-gray-500 mb-1">Mevcut GNO</div>
+                      <div className="text-sm text-gray-500 mb-1">{t('current_gno')}</div>
                       <div className="text-3xl font-bold text-gray-400">{(gpa?.gno || 0).toFixed(2)}</div>
                     </div>
                     <div className={`p-6 rounded-2xl shadow-lg transform transition-all ${simGpaResult.gno >= (gpa?.gno || 0) ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white' : 'bg-gradient-to-br from-orange-500 to-red-500 text-white'}`}>
-                      <div className="text-white/80 text-sm font-medium mb-1">Simülasyon GNO</div>
+                      <div className="text-white/80 text-sm font-medium mb-1">{t('sim_gno')}</div>
                       <div className="flex items-end gap-3">
                         <div className="text-5xl font-bold tracking-tight">{simGpaResult.gno.toFixed(2)}</div>
                         <div className={`text-lg font-medium px-2 py-1 rounded-lg ${simGpaResult.gno >= (gpa?.gno || 0) ? 'bg-white/20 text-white' : 'bg-black/20 text-white'}`}>
@@ -1233,19 +1132,19 @@ export default function App() {
                       </div>
                     </div>
                     {(() => {
-                      const simCheck = checkEEM413Eligibility(simulationRecords, simGpaResult);
+                      const simCheck = checkEEM413Eligibility(simulationRecords, simGpaResult, t);
                       return (
                         <div className={`p-6 rounded-2xl shadow-sm border ${simCheck.eligible ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                          <div className={`text-sm font-medium mb-1 ${simCheck.eligible ? 'text-green-600' : 'text-red-600'}`}>Bitirme Projesi (Simüle)</div>
+                          <div className={`text-sm font-medium mb-1 ${simCheck.eligible ? 'text-green-600' : 'text-red-600'}`}>{t('graduation_cap_title')}</div>
                           <div className={`text-xl font-bold ${simCheck.eligible ? 'text-green-800' : 'text-red-800'}`}>
-                            {simCheck.eligible ? '✅ Alabilirsin' : '❌ Alamazsın'}
+                            {t(simCheck.eligible ? 'can_take' : 'cannot_take')}
                           </div>
                         </div>
                       );
                     })()}
                     {/* AKTS Status Card */}
                     <div className="p-6 bg-white rounded-2xl shadow-sm border border-gray-200">
-                      <div className="text-sm text-gray-500 mb-1">AKTS & Mezuniyet</div>
+                      <div className="text-sm text-gray-500 mb-1">{t('ects_grad')}</div>
                       <div className="flex flex-col">
                         <div className="text-2xl font-bold text-gray-800">
                           {simGpaResult.totalECTS.toFixed(1)}
@@ -1253,8 +1152,8 @@ export default function App() {
                         </div>
                         <div className={`text-xs mt-1 font-medium ${simGpaResult.totalECTS >= 240 ? 'text-green-600' : 'text-orange-600'}`}>
                           {simGpaResult.totalECTS >= 240
-                            ? '✅ Kredi Tamamlandı'
-                            : `⚠️ Mezuniyete ${(240 - simGpaResult.totalECTS).toFixed(1)} Kaldı`}
+                            ? t('credits_completed')
+                            : `${t('credits_remaining')} ${(240 - simGpaResult.totalECTS).toFixed(1)} ${t('credits_remaining_suffix')}`}
                         </div>
                       </div>
                     </div>
@@ -1264,7 +1163,7 @@ export default function App() {
 
               {/* Yeni Ders Ekleme (Merged) */}
               <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 mt-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">➕ Senaryoya Ders Ekle</h3>
+                <h3 className="font-bold text-lg text-gray-800 mb-4">{t('add_course_title')}</h3>
 
                 {/* Tabs */}
                 <div className="flex gap-6 border-b border-gray-200 mb-6">
@@ -1272,20 +1171,20 @@ export default function App() {
                     className={`pb-2 px-1 font-medium text-sm transition-colors ${!isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
                     onClick={() => setIsCustomMode(false)}
                   >
-                    🔍 Listeden Seç
+                    {t('tab_list')}
                   </button>
                   <button
                     className={`pb-2 px-1 font-medium text-sm transition-colors ${isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
                     onClick={() => setIsCustomMode(true)}
                   >
-                    ✍️ Özel Ders Ekle
+                    {t('tab_custom')}
                   </button>
                 </div>
 
                 {!isCustomMode ? (
                   <div className="flex flex-col md:flex-row gap-4 items-end">
                     <div className="flex-1 w-full relative">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Arayın (Kod veya İsim)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('tab_list')}</label>
 
                       {/* Backdrop to close dropdown when clicking outside */}
                       {isSearchOpen && (
@@ -1301,7 +1200,7 @@ export default function App() {
                             setIsSearchOpen(true);
                           }}
                           onFocus={() => setIsSearchOpen(true)}
-                          placeholder="Örn: EEM403 veya Yapay Zeka..."
+                          placeholder={t('search_placeholder')}
                         />
 
                         {isSearchOpen && (
@@ -1351,7 +1250,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="w-full md:w-32">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Hedef Not</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('target_grade')}</label>
                       <select
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
                         value={simAddGrade}
@@ -1372,13 +1271,13 @@ export default function App() {
                       disabled={!simAddCourseCode}
                       className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
                     >
-                      Ekle
+                      {t('btn_add')}
                     </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                     <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Kodu</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_code')}</label>
                       <input
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 uppercase"
                         value={customCourse.code}
@@ -1387,7 +1286,7 @@ export default function App() {
                       />
                     </div>
                     <div className="md:col-span-12 lg:col-span-5">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Adı</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_name')}</label>
                       <input
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
                         value={customCourse.name}
@@ -1396,7 +1295,7 @@ export default function App() {
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Kredi</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_credit')}</label>
                       <input
                         type="number"
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
@@ -1414,19 +1313,19 @@ export default function App() {
                       />
                     </div>
                     <div className="md:col-span-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Tipi</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_type')}</label>
                       <select
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
                         value={customCourse.type}
                         onChange={e => setCustomCourse(prev => ({ ...prev, type: e.target.value }))}
                       >
-                        <option value="secmeli">Seçmeli</option>
-                        <option value="mesleki_secmeli">Mesleki Seçmeli</option>
-                        <option value="zorunlu">Zorunlu</option>
+                        <option value="secmeli">{t('type_elective')}</option>
+                        <option value="mesleki_secmeli">{t('type_technical')}</option>
+                        <option value="zorunlu">{t('type_mandatory')}</option>
                       </select>
                     </div>
                     <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Not</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_grade')}</label>
                       <select
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
                         value={customCourse.grade}
@@ -1444,7 +1343,7 @@ export default function App() {
                         disabled={!customCourse.code || !customCourse.name}
                         className="w-full md:w-auto px-8 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
                       >
-                        + Özel Dersi Ekle
+                        {t('btn_custom_add')}
                       </button>
                     </div>
                   </div>
@@ -1454,19 +1353,19 @@ export default function App() {
               {/* Ders Listesi */}
               <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
                 <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-800">📋 Hesaplamaya Dahil Olan Dersler</h3>
-                  <span className="text-sm text-gray-500">{simGpaResult?.usedCourses?.length || 0} Ders</span>
+                  <h3 className="font-bold text-gray-800">{t('sim_table_title')}</h3>
+                  <span className="text-sm text-gray-500">{simGpaResult?.usedCourses?.length || 0} {t('col_name')}</span>
                 </div>
                 <div className="overflow-x-auto max-h-[600px]">
                   <table className="w-full text-sm text-left">
                     <thead className="text-xs text-gray-500 uppercase bg-gray-50 sticky top-0">
                       <tr>
-                        <th className="px-6 py-3">Kod</th>
-                        <th className="px-6 py-3">Ders Adı</th>
-                        <th className="px-6 py-3 text-center">Kredi</th>
-                        <th className="px-6 py-3 text-center">Dönem</th>
-                        <th className="px-6 py-3 text-center">Simülasyon Notu</th>
-                        <th className="px-6 py-3 text-center">İşlem</th>
+                        <th className="px-6 py-3">{t('col_code')}</th>
+                        <th className="px-6 py-3">{t('col_name')}</th>
+                        <th className="px-6 py-3 text-center">{t('input_credit')}</th>
+                        <th className="px-6 py-3 text-center">{t('col_term')}</th>
+                        <th className="px-6 py-3 text-center">{t('col_sim_grade')}</th>
+                        <th className="px-6 py-3 text-center">{t('col_action')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1532,7 +1431,7 @@ export default function App() {
             <div className="bg-white rounded-xl shadow-lg p-8 border border-indigo-100">
               <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <Award className="text-indigo-600" />
-                Uzmanlaşma Analizi <span className="text-sm font-normal text-gray-500 ml-2">({analyzeSpecializations(records).activeSeason} Dönemi İçin Planlama)</span>
+                {t('spec_title')} <span className="text-sm font-normal text-gray-500 ml-2">{t('spec_subtitle_prefix')}{analyzeSpecializations(records).activeSeason} {t('spec_subtitle_suffix')}</span>
               </h2>
 
               {(() => {
@@ -1543,30 +1442,30 @@ export default function App() {
                   <div>
                     <div className="flex flex-col md:flex-row gap-6 mb-8">
                       <div className={`flex-1 p-4 rounded-xl border-l-4 ${isTotalMet ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'} shadow-sm`}>
-                        <h3 className="font-bold text-gray-800 mb-1">Toplam Mesleki Seçmeli</h3>
+                        <h3 className="font-bold text-gray-800 mb-1">{t('total_technical')}</h3>
                         <div className="flex items-end gap-2">
                           <span className="text-3xl font-bold">{analysis.totalTechnicalElectives}</span>
-                          <span className="text-gray-500 mb-1">/ 7 Ders (Min)</span>
+                          <span className="text-gray-500 mb-1">{t('min_7_courses')}</span>
                         </div>
                         <p className={`text-sm mt-2 ${isTotalMet ? 'text-green-700' : 'text-amber-700'}`}>
-                          {isTotalMet ? '✅ Toplam ders sayısı şartı sağlandı.' : '⚠️ En az 7 mesleki seçmeli ders almalısınız.'}
+                          {isTotalMet ? t('min_7_success') : t('min_7_fail')}
                         </p>
                       </div>
 
                       <div className="flex-1 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-xl shadow-sm">
-                        <h3 className="font-bold text-gray-800 mb-1">En Uygun Alan</h3>
+                        <h3 className="font-bold text-gray-800 mb-1">{t('best_area')}</h3>
                         <div className="text-xl font-bold text-blue-900">
                           {analysis.bestGroup
                             ? SPECIALIZATION_GROUPS.find(g => g.id === analysis.bestGroup)?.name
                             : 'Henüz seçim yapılmadı'}
                         </div>
                         <p className="text-sm text-blue-700 mt-2">
-                          Mevcut derslerinize göre en yüksek ilerleme.
+                          {t('best_area_desc')}
                         </p>
                       </div>
                     </div>
 
-                    <h3 className="text-xl font-bold text-gray-800 mb-4">Alan İlerlemeleri</h3>
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">{t('area_progress_title')}</h3>
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                       {analysis.groups.map((groupResult) => (
                         <div
@@ -1578,7 +1477,7 @@ export default function App() {
                         >
                           {groupResult.isQualified && (
                             <div className="absolute top-0 right-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg z-10">
-                              TAMAMLANDI
+                              {t('status_completed')}
                             </div>
                           )}
 
@@ -1587,11 +1486,11 @@ export default function App() {
                             <div className="flex items-center gap-4 mt-2">
                               <div className="flex items-center text-sm font-medium">
                                 <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.takenCount >= 5 ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                                İlerleme: {groupResult.takenCount}/5
+                                {t('progress_label')} {groupResult.takenCount}/5
                               </div>
                               <div className="flex items-center text-sm font-medium">
                                 <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.mandatoryMissing.length === 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                Zorunlu: {groupResult.mandatoryMissing.length === 0 ? 'Tamam' : `${groupResult.mandatoryMissing.length} Eksik`}
+                                {t('mandatory_label')} {groupResult.mandatoryMissing.length === 0 ? t('mandatory_ok') : `${groupResult.mandatoryMissing.length} ${t('mandatory_missing')}`}
                               </div>
                             </div>
                             {/* Progress bar */}
@@ -1608,8 +1507,8 @@ export default function App() {
                               <table className="w-full text-sm">
                                 <thead className="text-xs text-gray-400 bg-gray-50 sticky top-0">
                                   <tr>
-                                    <th className="text-left py-2 px-3 font-medium">Kod</th>
-                                    <th className="text-left py-2 px-3 font-medium">Ders Adı</th>
+                                    <th className="text-left py-2 px-3 font-medium">{t('col_code')}</th>
+                                    <th className="text-left py-2 px-3 font-medium">{t('col_name')}</th>
                                     <th className="text-center py-2 px-3 font-medium">Durum</th>
                                   </tr>
                                 </thead>
@@ -1627,12 +1526,12 @@ export default function App() {
                                       <td className="py-2 px-3 text-center">
                                         {statusItem.status === 'taken' && (
                                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                            <CheckCircle size={12} className="mr-1" /> Alındı
+                                            <CheckCircle size={12} className="mr-1" /> {t('status_taken')}
                                           </span>
                                         )}
                                         {statusItem.status === 'available' && (
                                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                            Alınabilir
+                                            {t('status_available')}
                                           </span>
                                         )}
                                         {statusItem.status === 'locked' && (
@@ -1657,12 +1556,12 @@ export default function App() {
                     </div>
 
                     <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                      <h4 className="font-bold flex items-center gap-2 mb-2"><Info size={16} /> Kurallar Hatırlatması:</h4>
+                      <h4 className="font-bold flex items-center gap-2 mb-2"><Info size={16} /> {t('rules_reminder')}</h4>
                       <ul className="list-disc list-inside space-y-1 ml-1">
-                        <li>Mezuniyet için toplam <strong>en az 7</strong> mesleki seçmeli ders (Minimum 35 AKTS) alınmalıdır.</li>
-                        <li>Bu derslerin <strong>en az 5 tanesi</strong> (Min 25 AKTS) tek bir uzmanlaşma grubundan seçilmelidir.</li>
-                        <li>Seçilen grubun altındaki <strong>(Z)</strong> işaretli zorunlu derslerin tamamı başarılmalıdır.</li>
-                        <li>"Research in..." derslerinden aynı dönem için en fazla 1, toplamda en fazla 2 adet alınabilir.</li>
+                        <li>{t('rule_1')}</li>
+                        <li>{t('rule_2')}</li>
+                        <li>{t('rule_3')}</li>
+                        <li>{t('rule_4')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1675,13 +1574,13 @@ export default function App() {
                 onClick={() => setStep(2)} // Corrected: Back to Analysis/Simulation (Step 2)
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                ← Geri
+                {t('btn_back')}
               </button>
               <button
                 onClick={() => setStep(4)} // Forward to Schedule Planning (Step 4)
                 className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
               >
-                Ders Programı →
+                {t('btn_next_schedule')}
               </button>
             </div>
           </div>
@@ -1691,8 +1590,8 @@ export default function App() {
         {step === 4 && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-lg p-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">📅 Ders Programı Oluştur</h2>
-              <p className="text-gray-600 mb-6">Haftalık ders programınızı oluşturun ve çakışmaları analiz edin</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('schedule_title')}</h2>
+              <p className="text-gray-600 mb-6">{t('schedule_desc')}</p>
 
               {/* Tab Selection */}
               <div className="flex gap-4 border-b border-gray-200 mb-6">
@@ -1703,7 +1602,7 @@ export default function App() {
                     : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                  ✍️ Manuel Giriş
+                  {t('tab_manual')}
                 </button>
                 <button
                   onClick={() => setActiveScheduleTab('pdf')}
@@ -1712,7 +1611,7 @@ export default function App() {
                     : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                  📄 PDF Yükle
+                  {t('tab_pdf')}
                 </button>
               </div>
 
@@ -1721,7 +1620,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Kodu</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_code')}</label>
                       <input
                         type="text"
                         placeholder="EEM321"
@@ -1731,7 +1630,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Gün</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_day')}</label>
                       <select
                         value={manualCourse.day}
                         onChange={(e) => setManualCourse({ ...manualCourse, day: e.target.value })}
@@ -1747,7 +1646,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_start')}</label>
                       <input
                         type="time"
                         value={manualCourse.startTime}
@@ -1756,7 +1655,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_end')}</label>
                       <input
                         type="time"
                         value={manualCourse.endTime}
@@ -1783,7 +1682,7 @@ export default function App() {
                     disabled={!manualCourse.courseCode || !manualCourse.day || !manualCourse.startTime || !manualCourse.endTime}
                     className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    + Ders Ekle
+                    {t('btn_add_lesson')}
                   </button>
                 </div>
               )}
@@ -1804,13 +1703,13 @@ export default function App() {
                         <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                           <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        <p className="mt-2 text-sm font-medium">Ders Programı PDF'ini Yükle</p>
-                        <p className="mt-1 text-xs text-gray-500">Okulun paylaştığı PDF formatındaki programı yükleyin</p>
+                        <p className="mt-2 text-sm font-medium">{t('pdf_upload_text')}</p>
+                        <p className="mt-1 text-xs text-gray-500">{t('pdf_upload_sub')}</p>
                       </div>
                     </label>
                   </div>
                   <p className="text-xs text-gray-500">
-                    💡 PDF yüklendikten sonra otomatik olarak parse edilecek ve programa eklenecektir.
+                    {t('pdf_hint')}
                   </p>
                 </div>
               )}
@@ -1819,17 +1718,17 @@ export default function App() {
               {departmentSchedule.length > 0 && (
                 <div className="mt-8 p-6 bg-indigo-50 rounded-xl border border-indigo-100">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-indigo-900">📚 Bölüm Programından Ders Seç</h3>
+                    <h3 className="text-lg font-bold text-indigo-900">{t('dept_schedule_title')}</h3>
                     <button
                       onClick={autoAddFailedCourses}
                       className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 flex items-center gap-2"
                     >
                       <AlertCircle size={16} />
-                      Kalan Dersleri Otomatik Ekle
+                      {t('btn_auto_add_failed')}
                     </button>
                   </div>
                   <p className="text-sm text-indigo-700 mb-4">
-                    Aşağıdaki listeden derslerin şubelerini (Section) seçerek programınıza ekleyin. Çakışmalar aşağıda otomatik kontrol edilecektir.
+                    {t('dept_schedule_desc')}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto">
                     {Array.from(new Set(departmentSchedule.map(s => s.courseCode))).sort().map(code => {
@@ -1861,7 +1760,7 @@ export default function App() {
                             <div className="mb-3">
                               <div className="flex justify-between items-center mb-2">
                                 <div className="text-xs font-semibold text-blue-700 flex items-center gap-1">
-                                  📖 Teorik Ders
+                                  📖 {t('col_name')}
                                 </div>
                                 <button
                                   onClick={() => {
@@ -1877,7 +1776,7 @@ export default function App() {
                                   }}
                                   className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
                                 >
-                                  Tümünü Ekle ({lectures.length})
+                                  {t('add_all')} ({lectures.length})
                                 </button>
                               </div>
                               <div className="space-y-1 text-xs text-gray-600">
@@ -1901,10 +1800,10 @@ export default function App() {
                             return (
                               <div>
                                 <div className="text-xs font-semibold text-orange-700 mb-2 flex items-center gap-1">
-                                  🔬 Laboratuvar Grupları
+                                  🔬 {t('lab_groups')}
                                   {selectedLabSection && (
                                     <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded">
-                                      ✓ Grup {selectedLabSection} seçildi
+                                      ✓ {t('group_selected')} {selectedLabSection}
                                     </span>
                                   )}
                                 </div>
@@ -1939,7 +1838,7 @@ export default function App() {
                                               }}
                                               className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
                                             >
-                                              Kaldır
+                                              {t('btn_remove')}
                                             </button>
                                           ) : (
                                             <button
@@ -1961,7 +1860,7 @@ export default function App() {
                                                 : 'bg-orange-500 text-white hover:bg-orange-600'
                                                 }`}
                                             >
-                                              {isOtherGroupSelected ? 'Başka grup seçili' : 'Ekle'}
+                                              {isOtherGroupSelected ? t('other_group_selected') : t('btn_add')}
                                             </button>
                                           )}
                                         </div>
@@ -1991,12 +1890,12 @@ export default function App() {
               {selectedSchedule.length > 0 && (
                 <div className="mt-8">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-gray-900">📋 Haftalık Program</h3>
+                    <h3 className="text-xl font-bold text-gray-900">{t('weekly_schedule_title')}</h3>
                     <button
                       onClick={() => setSelectedSchedule([])}
                       className="px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
                     >
-                      Programı Temizle
+                      {t('clear_schedule')}
                     </button>
                   </div>
 
@@ -2057,7 +1956,7 @@ export default function App() {
 
                   {/* Conflict Analysis */}
                   <div className="mt-6">
-                    <h3 className="font-semibold text-gray-900 mb-3">⚠️ Çakışma Analizi</h3>
+                    <h3 className="font-semibold text-gray-900 mb-3">{t('conflict_analysis')}</h3>
                     {(() => {
                       const conflicts = detectScheduleConflicts(selectedSchedule);
                       return conflicts.length > 0 ? (
@@ -2066,7 +1965,7 @@ export default function App() {
                             <div key={i} className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
                               <AlertCircle className="text-red-500 mt-0.5 mr-2 shrink-0" size={18} />
                               <div>
-                                <div className="font-bold text-red-900 text-sm">Çakışma Tespit Edildi</div>
+                                <div className="font-bold text-red-900 text-sm">{t('conflict_detected')}</div>
                                 <div className="text-red-700 text-sm mt-1">{c.courses.join(' ve ')}</div>
                                 <div className="text-red-600 text-xs mt-0.5">{c.time}</div>
                               </div>
@@ -2077,7 +1976,7 @@ export default function App() {
                         <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                           <p className="text-sm text-green-800 flex items-center">
                             <CheckCircle className="mr-2" size={16} />
-                            ✅ Çakışma tespit edilmedi! Programınız uyumlu.
+                            {t('no_conflict')}
                           </p>
                         </div>
                       );
@@ -2092,7 +1991,7 @@ export default function App() {
                 onClick={() => setStep(3)} // Back to Specialization Step 3
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                ← Geri
+                {t('btn_back')}
               </button>
               <div className="flex gap-3">
                 <button
@@ -2105,7 +2004,7 @@ export default function App() {
                   onClick={() => setStep(5)} // Forward to Report
                   className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  Raporu İndir
+                  {t('btn_next_report')}
                 </button>
               </div>
             </div>
@@ -2117,15 +2016,15 @@ export default function App() {
           step === 5 && gpa && (
             <div className="space-y-6">
               <div className="bg-white rounded-xl shadow-lg p-8">
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">📄 Akademik Durum Raporu</h2>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('report_title')}</h2>
                 <div className="space-y-4 mb-6">
                   <div className="p-4 bg-gray-50 rounded-lg">
-                    <h3 className="font-semibold mb-2">📊 Not Durumu</h3>
+                    <h3 className="font-semibold mb-2">{t('report_grade_status')}</h3>
                     <p>GNO: <strong>{gpa.gno.toFixed(2)}</strong> | AKTS: <strong>{gpa.totalECTS}/240</strong></p>
                   </div>
                   {selectedArea && (
                     <div className="p-4 bg-gray-50 rounded-lg">
-                      <h3 className="font-semibold mb-2">🎯 En İyi Uzmanlaşma</h3>
+                      <h3 className="font-semibold mb-2">{t('report_best_spec')}</h3>
                       <p>
                         {(() => {
                           const analysis = analyzeSpecializations(records);
@@ -2136,7 +2035,7 @@ export default function App() {
                               <>
                                 <strong>{best.name}</strong>
                                 <p className="text-sm text-gray-600 mt-1">
-                                  İlerleme: {groupResult?.takenCount}/5 ders
+                                  {t('progress_label')} {groupResult?.takenCount}/5
                                 </p>
                               </>
                             )
@@ -2148,9 +2047,9 @@ export default function App() {
                   )}
                   {eem413Check && (
                     <div className="p-4 bg-gray-50 rounded-lg">
-                      <h3 className="font-semibold mb-2">🎓 EEM413/414 Durumu</h3>
+                      <h3 className="font-semibold mb-2">{t('report_eem413')}</h3>
                       <p className={eem413Check.eligible ? 'text-green-600' : 'text-red-600'}>
-                        {eem413Check.eligible ? '✅ Alabilir' : '❌ Henüz alamaz'}
+                        {eem413Check.eligible ? t('can_take') : t('cannot_take')}
                       </p>
                     </div>
                   )}
@@ -2169,16 +2068,17 @@ export default function App() {
                         failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
                         allRecords: records,
                         simulationGpa: simResult,
-                        simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined
+                        simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined,
+                        lang: lang
                       });
                     }}
                     className="w-full flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg transform hover:scale-[1.02]"
                   >
                     <Download size={24} className="mr-2" />
-                    <span className="font-bold text-lg">PDF Raporu İndir</span>
+                    <span className="font-bold text-lg">{t('report_btn_download')}</span>
                   </button>
                   <p className="text-center text-sm text-gray-500 mt-4">
-                    Rapor, senaryo analizlerini ve uzmanlaşma önerilerini içerir.
+                    {t('report_footer')}
                   </p>
                 </div>
               </div>
@@ -2187,13 +2087,13 @@ export default function App() {
                   onClick={() => setStep(4)} // Back to Schedule Planning
                   className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  ← Geri
+                  {t('btn_back')}
                 </button>
                 <button
                   onClick={() => setStep(1)}
                   className="px-6 py-2 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50"
                 >
-                  Yeni Analiz Başlat
+                  {t('btn_new_analysis')}
                 </button>
               </div>
             </div>
@@ -2203,27 +2103,28 @@ export default function App() {
         <footer className="bg-white border-t mt-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <p className="text-center text-gray-600 text-sm font-medium">
-              <span className="md:hidden">ESTÜ EEM Akademik Planlama Sistemi</span>
-              <span className="hidden md:block">ESTÜ Elektrik Elektronik Mühendisliği Akademik Planlama Sistemi</span>
+              <span className="md:hidden">{t('header_title_mobile')}</span>
+              <span className="hidden md:block">{t('header_title_desktop')}</span>
             </p>
 
             <div className="flex flex-col items-center gap-3 mt-4">
               <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100 shadow-sm">
                 <ShieldCheck size={16} />
-                <span className="font-medium">Güvenlik: Tüm veriler tarayıcınızda işlenir, sunucuya gönderilmez.</span>
+                <span className="font-medium">{t('footer_security')}</span>
               </div>
 
               <div className="flex items-center gap-3 text-xs text-gray-400">
-                <span>Ahmet Furkan Güven tarafından geliştirilmiştir.</span>
+                <span>{t('footer_developer')}</span>
                 <span className="text-gray-300">|</span>
-                <a href="https://github.com/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
+                <a href="https://github.com/Ahmetfurkanguven/estu-student-assistant" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
                   <Github size={14} />
-                  <span>Açık Kaynak Kodlarına Eriş</span>
+                  <span>{t('footer_opensource')}</span>
                 </a>
               </div>
             </div>
           </div>
         </footer>
+        <VisitorCounter />
       </div >
     </div >
   );
