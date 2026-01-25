@@ -23,9 +23,7 @@ export interface StudentRecord {
     ects: number;
     grade: Grade;
     retake?: boolean;
-    status?: string; // MS, MUAF, etc.
     countInGPA?: boolean; // S statülü dersler GNO'ya katılmaz
-    equivalentCourse?: string; // Bu dersin yerine sayıldığı eski ders kodu (Yerine-1/2) OR bu dersin sayıldığı ana kod
 }
 
 export interface ScheduleOffering {
@@ -45,9 +43,7 @@ export interface GPAResult {
     totalCredits: number;
     passedCredits: number;
     totalECTS: number;
-    totalAttempted: number;
     usedCourses: StudentRecord[]; // Hesaplamada kullanılan derslerin listesi
-    replacedCourses?: StudentRecord[]; // Yerine sayıldığı için listeden çıkarılan dersler
 }
 
 export interface SpecializationArea {

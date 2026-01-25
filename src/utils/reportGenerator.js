@@ -1,11 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { analyzeSpecializations } from './specializationUtils';
-import { translations } from '../data/locales';
 export const generateAcademicReport = (data) => {
     console.log('Rapor oluşturuluyor...', data);
-    const lang = data.lang || 'tr';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const t = (key) => translations[lang]?.[key] || key;
     try {
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
@@ -58,29 +54,29 @@ export const generateAcademicReport = (data) => {
             }
         };
         // --- HEADER ---
-        addTitle(t('pdf_title'));
+        addTitle('ESTU Akademik Durum ve Senaryo Raporu');
         doc.setFontSize(10);
         doc.setFont('helvetica', 'italic');
         doc.setTextColor(100);
-        doc.text(cleanText(`${t('pdf_date')} ${new Date().toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')}`), pageWidth / 2, yPos, { align: 'center' });
+        doc.text(cleanText(`Oluşturulma Tarihi: ${new Date().toLocaleDateString('tr-TR')}`), pageWidth / 2, yPos, { align: 'center' });
         yPos += 15;
         doc.setTextColor(0);
         // --- 1. STUDENT INFO ---
-        addSubtitle(t('pdf_sec_student'));
-        addText(t('pdf_dept'));
-        addText(`${t('current_gno')}: ${data.gpa.gno.toFixed(2)}`, 20, 10, true);
-        addText(`${t('total_ects')}: ${data.gpa.totalECTS.toFixed(1)}`);
+        addSubtitle('1. OGRENCI BILGILERI');
+        addText(`Bolum: Elektrik-Elektronik Muhendisligi`);
+        addText(`Mevcut GNO: ${data.gpa.gno.toFixed(2)}`, 20, 10, true);
+        addText(`Toplam AKTS: ${data.gpa.totalECTS.toFixed(1)}`);
         const successRate = data.gpa.totalAttempted > 0
             ? Math.round((data.gpa.passedCredits / data.gpa.totalAttempted) * 100)
             : 0;
-        addText(`${t('pdf_success_rate')} %${successRate}`);
+        addText(`Genel Basari Orani: %${successRate}`);
         addLine();
         // --- 2. SCENARIO / SIMULATION ANALYSIS (IF EXISTS) ---
         // Make sure we have simulation data to compare
         // Corrected property name: simulationGpa instead of SimulationGpa
         if (data.simulationGpa && data.simulationRecords) {
             checkPageBreak(80);
-            addSubtitle(t('pdf_sec_sim'));
+            addSubtitle('2. SENARYO VE SIMULASYON ANALIZI');
             // Identify changes
             const changes = [];
             data.simulationRecords.forEach(simRecord => {
@@ -91,7 +87,7 @@ export const generateAcademicReport = (data) => {
                 if (simRecord.semester === 'Simülasyon') {
                     changes.push({
                         course: simRecord,
-                        oldGrade: original ? original.grade.letter : '(New)',
+                        oldGrade: original ? original.grade.letter : '(Yeni Ders)',
                         newGrade: simRecord.grade.letter,
                         type: original ? 'update' : 'new'
                     });
@@ -107,13 +103,13 @@ export const generateAcademicReport = (data) => {
                 }
             });
             if (changes.length > 0) {
-                addText(t('pdf_sim_changes'), 20, 11, true);
+                addText('Ders Bazli Senaryo Degisiklikleri:', 20, 11, true);
                 yPos += 2;
                 changes.forEach(change => {
                     checkPageBreak(12);
                     const isImprovement = calculateCoefficient(change.newGrade) > calculateCoefficient(change.oldGrade);
-                    const changeSymbol = isImprovement ? t('pdf_imp_up') : t('pdf_imp_down');
-                    const typeLabel = change.type === 'new' ? t('pdf_risk_new') : t('pdf_risk_repeat');
+                    const changeSymbol = isImprovement ? '(Yukselis)' : '(Dusus)';
+                    const typeLabel = change.type === 'new' ? '[YENI]' : '[TEKRAR]';
                     doc.setFontSize(10);
                     doc.setFont('helvetica', 'bold');
                     doc.text(cleanText(`${typeLabel} ${change.course.courseCode}`), 25, yPos);
@@ -129,7 +125,7 @@ export const generateAcademicReport = (data) => {
                 yPos += 5;
             }
             else {
-                addText(t('pdf_sim_no_change'));
+                addText('Senaryoda ders bazli degisiklik tespit edilemedi.');
                 yPos += 5;
             }
             // TOTAL IMPACT SUMMARY
@@ -143,16 +139,16 @@ export const generateAcademicReport = (data) => {
             yPos += 8;
             doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
-            doc.text(cleanText(t('pdf_impact_analysis')), 30, yPos);
+            doc.text(cleanText("TOPLAM ETKI ANALIZI"), 30, yPos);
             // Row 1: GNO
             yPos += 10;
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(`${t('current_gno')}:`, 30, yPos);
+            doc.text("Mevcut GNO:", 30, yPos);
             doc.setFont('helvetica', 'bold');
             doc.text(data.gpa.gno.toFixed(2), 60, yPos);
             doc.setFont('helvetica', 'normal');
-            doc.text(t('pdf_target_gno'), 90, yPos);
+            doc.text("Hedeflenen GNO:", 90, yPos);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(color[0], color[1], color[2]);
             doc.text(data.simulationGpa.gno.toFixed(2), 125, yPos);
@@ -163,11 +159,11 @@ export const generateAcademicReport = (data) => {
             yPos += 10;
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text(`${t('total_ects')}:`, 30, yPos);
+            doc.text("Mevcut AKTS:", 30, yPos);
             doc.setFont('helvetica', 'bold');
             doc.text(data.gpa.totalECTS.toFixed(1), 60, yPos);
             doc.setFont('helvetica', 'normal');
-            doc.text(t('pdf_target_ects'), 90, yPos);
+            doc.text("Hedeflenen AKTS:", 90, yPos);
             doc.setFont('helvetica', 'bold');
             doc.text(data.simulationGpa.totalECTS.toFixed(1), 125, yPos);
             doc.setFont('helvetica', 'normal');
@@ -179,7 +175,7 @@ export const generateAcademicReport = (data) => {
         }
         // --- 3. FAILED COURSES ---
         checkPageBreak(40);
-        addSubtitle(t('pdf_sec_failed'));
+        addSubtitle('3. BASARISIZ / TEKRAR EDILMESI GEREKEN DERSLER');
         if (data.failedCourses.length > 0) {
             data.failedCourses.forEach((course) => {
                 checkPageBreak(10);
@@ -187,27 +183,27 @@ export const generateAcademicReport = (data) => {
                 addText(`• ${course.courseCode} - ${course.courseName} [${course.grade.letter}] ${status}`);
             });
             yPos += 5;
-            addText(t('pdf_failed_total').replace('{count}', data.failedCourses.length.toString()));
-            addText(t('pdf_failed_advice'));
+            addText(`Toplam ${data.failedCourses.length} adet basarisiz dersiniz bulunmaktadir.`);
+            addText('Bu dersleri oncelikli olarak almaniz onerilir.');
         }
         else {
-            addText(t('pdf_failed_none'));
+            addText('Harika! Basarisiz dersiniz bulunmamaktadir.');
         }
         addLine();
         // --- 4. SPECIALIZATION ANALYSIS ---
         checkPageBreak(60);
-        addSubtitle(t('pdf_sec_spec'));
+        addSubtitle('4. UZMANLASMA ALANI ANALIZI');
         const specAnalysis = analyzeSpecializations(data.allRecords);
         const bestGroupId = specAnalysis.bestGroup;
         if (bestGroupId) {
             const groupResult = specAnalysis.groups.find(g => g.group.id === bestGroupId);
             if (groupResult) {
-                addText(`${t('pdf_spec_best')} ${groupResult.group.name}`, 20, 10, true);
+                addText(`En Yakin Uzmanlasma Alani: ${groupResult.group.name}`, 20, 10, true);
                 const progress = Math.round((groupResult.takenCount / 5) * 100);
-                addText(t('pdf_spec_progress').replace('{percent}', (progress > 100 ? 100 : progress).toString()).replace('{count}', groupResult.takenCount.toString()));
+                addText(`Ilerleme Durumu: %${progress > 100 ? 100 : progress} (${groupResult.takenCount} ders alindi)`);
                 yPos += 5;
                 if (groupResult.mandatoryMissing.length > 0) {
-                    addText(t('pdf_spec_missing_mandatory'));
+                    addText('Eksik Zorunlu Dersler:');
                     groupResult.mandatoryMissing.forEach(code => {
                         checkPageBreak(6);
                         addText(`  - ${code} (Zorunlu)`, 25);
@@ -216,7 +212,7 @@ export const generateAcademicReport = (data) => {
                 }
                 const availableCourses = groupResult.coursesStatus.filter(c => c.status === 'available').slice(0, 5);
                 if (availableCourses.length > 0) {
-                    addText(t('pdf_spec_suggested'));
+                    addText('Onerilen Secmeli Dersler:');
                     availableCourses.forEach(item => {
                         checkPageBreak(6);
                         addText(`  - ${item.course.code} - ${item.course.name}`, 25);
@@ -225,14 +221,14 @@ export const generateAcademicReport = (data) => {
             }
         }
         else {
-            addText(t('pdf_spec_none'));
+            addText('Henuz bir uzmanlasma alanina yonelik yeterli ders almadiniz.');
         }
         addLine();
         // --- DISCLAIMER ---
         checkPageBreak(30);
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        const disclaimer = t('pdf_disclaimer');
+        const disclaimer = "NOT: Bu rapor ESTU Ogrenci Asistani tarafindan otomatik olusturulmustur. Resmi belge niteligi tasimaz.";
         const splitDisclaimer = doc.splitTextToSize(cleanText(disclaimer), pageWidth - 40);
         doc.text(splitDisclaimer, 20, yPos);
         doc.save('estu_akademik_senaryo_raporu.pdf');
