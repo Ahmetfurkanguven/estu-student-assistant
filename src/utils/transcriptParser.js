@@ -14,28 +14,55 @@ export function parseTranscriptText(text) {
             currentSemester = line.trim();
             continue;
         }
-        // Ders satırı kontrolü: Kod + İsim + Kredi + AKTS + Not
-        const match = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
-        if (match && currentSemester) {
-            const [, code, name, credits, ects, gradeLetter] = match;
+        // Ders satırı kontrolü: Daha esnek split mantığı
+        // Eski regex: /^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/
+        // Yeni mantık: Satırı parçala ve kolonları kontrol et.
+        const parts = line.split(/\s{2,}|\t+/).filter(p => p.trim());
+        const codeMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+/);
+        if (codeMatch && parts.length >= 5) {
+            const code = codeMatch[1];
             // ÖZEL KOD: MFALM102 ve TTTT02 derslerini yoksay
             if (code === 'MFALM102' || code === 'TTTT02') {
                 continue;
             }
-            const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
-            records.push({
-                id: `${code}-${currentSemester}`,
-                courseCode: code,
-                courseName: name.trim(),
-                semester: currentSemester,
-                credits: parseInt(credits),
-                ects: parseFloat(ects),
-                grade: {
-                    letter: gradeLetter,
-                    coefficient: gradeInfo.coefficient,
-                    passed: gradeInfo.passed
-                }
-            });
+            // YERİNE DERS KONTROLÜ
+            // App.tsx'teki mantığın aynısı
+            const yerine1 = parts.length > 6 ? parts[6] : null;
+            const yerine2 = parts.length > 7 ? parts[7] : null;
+            const isYerinePopulated = (val) => {
+                return val && val.length > 2 && val !== 'Z' && val !== 'S'; // Basit kontrol
+            };
+            if (isYerinePopulated(yerine1) || isYerinePopulated(yerine2)) {
+                console.log(`[IGNORED] Yerine ders tespit edildi (Parser), satır atlanıyor: ${code}`);
+                continue;
+            }
+            // Normal Parse işlemine devam et (Regex yerine parts kullanarak)
+            // parts[0]: Kod (muhtemelen codeMatch[1] ile aynı veya benzer)
+            // parts[1]: Ad
+            // parts[2]: Kredi/AKTS? (Format değişebilir, dikkatli olalım)
+            // Transkript formatları değişken olduğu için orijinal regexi fallback olarak kullanabiliriz
+            // Ancak "Yerine" sütunu varsa zaten yukarıda eledik.
+            // Eğer buraya geldiysek "Yerine" sütunu yok veya boş.
+            // Orijinal regex'i tekrar deneyelim, çünkü format doğrulaması sağlıyordu.
+            // Ancak satırın sonunda ekstra şeyler olabilir (Yerine sütunu boş olsa bile bazen tab karakterleri vs).
+            const match = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})/);
+            if (match) {
+                const [, matchedCode, name, credits, ects, gradeLetter] = match;
+                const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
+                records.push({
+                    id: `${matchedCode}-${currentSemester}`,
+                    courseCode: matchedCode,
+                    courseName: name.trim(),
+                    semester: currentSemester,
+                    credits: parseInt(credits),
+                    ects: parseFloat(ects),
+                    grade: {
+                        letter: gradeLetter,
+                        coefficient: gradeInfo.coefficient,
+                        passed: gradeInfo.passed
+                    }
+                });
+            }
         }
     }
     return records;
