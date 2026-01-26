@@ -43,6 +43,11 @@ export function parseTranscriptText(text: string): StudentRecord[] {
                 countInGPA = false;
             }
 
+            // DEBUG LOG FOR ANALYSIS
+            if (!countInGPA || code === 'TTTT02' || code === 'MFALM102') {
+                console.log(`[PARSER DEBUG] ${code}: Status=${status}, Rest='${rest}', HasReplacement=${hasReplacement}, CountInGPA=${countInGPA}`);
+            }
+
             // Also exclude 'T' (Transfer) or other non-calculated statuses if necessary, 
             // but for now focusing on the user's "Yerine" request.
 
@@ -97,8 +102,12 @@ export function parseTranscriptText(text: string): StudentRecord[] {
 export async function extractTextFromPDF(file: File): Promise<string> {
     try {
         const pdfjs = await import('pdfjs-dist');
-        // PDF.js worker ayarlaması
-        pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+        // PDF.js worker ayarlaması - Vite compatible way
+        // @ts-ignore
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+            'pdfjs-dist/build/pdf.worker.min.mjs',
+            import.meta.url
+        ).href;
 
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
