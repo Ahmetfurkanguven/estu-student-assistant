@@ -1308,971 +1308,973 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                </div>
               )}
 
-                  {/* Yeni Ders Ekleme (Merged) */}
-                  <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 mt-6">
-                    <h3 className="font-bold text-lg text-gray-800 mb-4">{t('add_course_title')}</h3>
+              {/* Yeni Ders Ekleme (Merged) */}
+              <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 mt-6">
+                <h3 className="font-bold text-lg text-gray-800 mb-4">{t('add_course_title')}</h3>
 
-                    {/* Tabs */}
-                    <div className="flex gap-6 border-b border-gray-200 mb-6">
-                      <button
-                        className={`pb-2 px-1 font-medium text-sm transition-colors ${!isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setIsCustomMode(false)}
-                      >
-                        {t('tab_list')}
-                      </button>
-                      <button
-                        className={`pb-2 px-1 font-medium text-sm transition-colors ${isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setIsCustomMode(true)}
-                      >
-                        {t('tab_custom')}
-                      </button>
-                    </div>
-
-                    {!isCustomMode ? (
-                      <div className="flex flex-col md:flex-row gap-4 items-end">
-                        <div className="flex-1 w-full relative">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Ders Arayın / Search Course</label>
-
-                          {/* Backdrop to close dropdown when clicking outside */}
-                          {isSearchOpen && (
-                            <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsSearchOpen(false)}></div>
-                          )}
-
-                          <div className="relative z-20">
-                            <input
-                              className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                              value={simAddCourseCode}
-                              onChange={(e) => {
-                                setSimAddCourseCode(e.target.value);
-                                setIsSearchOpen(true);
-                              }}
-                              onFocus={() => setIsSearchOpen(true)}
-                              placeholder="Örn: EEM403 veya Yapay Zeka..."
-                            />
-
-                            {isSearchOpen && (
-                              <ul className="absolute w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-100">
-                                {(() => {
-                                  // Alınmış veya senaryoda olan derslerin kodlarını (ve intibak karşılıklarını) bul
-                                  const takenCodes = new Set<string>();
-                                  simulationRecords.forEach(r => {
-                                    takenCodes.add(r.courseCode); // Orijinal kod
-                                    // İntibak kontrolü
-                                    const mapping = INTIBAK_MAPPINGS.find(m => m.oldCode === r.courseCode);
-                                    if (mapping) {
-                                      takenCodes.add(mapping.newCode); // Yeni kod
-                                    }
-                                  });
-
-                                  const searchLower = simAddCourseCode.toLowerCase();
-                                  const filtered = ALL_COURSES
-                                    .filter(c => !takenCodes.has(c.code))
-                                    .filter(c =>
-                                      c.code.toLowerCase().includes(searchLower) ||
-                                      c.name.toLowerCase().includes(searchLower)
-                                    )
-                                    .sort((a, b) => a.code.localeCompare(b.code));
-
-                                  if (filtered.length === 0) {
-                                    return <li className="px-4 py-3 text-gray-500 text-sm">Sonuç bulunamadı.</li>
-                                  }
-
-                                  return filtered.map(c => (
-                                    <li
-                                      key={c.code}
-                                      onClick={() => {
-                                        setSimAddCourseCode(c.code);
-                                        setIsSearchOpen(false);
-                                      }}
-                                      className="px-4 py-3 hover:bg-indigo-50 cursor-pointer transition-colors"
-                                    >
-                                      <div className="font-bold text-gray-800">{c.code}</div>
-                                      <div className="text-sm text-gray-600 truncate">{c.name}</div>
-                                      <div className="text-xs text-gray-400 mt-1">{c.credits} Kredi | {c.ects} AKTS</div>
-                                    </li>
-                                  ));
-                                })()}
-                              </ul>
-                            )}
-                          </div>
-                        </div>
-                        <div className="w-full md:w-32">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Hedef Not</label>
-                          <select
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={simAddGrade}
-                            onChange={(e) => setSimAddGrade(e.target.value)}
-                          >
-                            {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
-                              <option key={g} value={g}>{g}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (simAddCourseCode) {
-                              addSimulationCourse(simAddCourseCode, simAddGrade);
-                              setSimAddCourseCode(''); // Reset
-                            }
-                          }}
-                          disabled={!simAddCourseCode}
-                          className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
-                        >
-                          Ekle
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
-                          <input
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 uppercase"
-                            value={customCourse.code}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, code: e.target.value }))}
-                            placeholder={t('placeholder_code')}
-                          />
-                        </div>
-                        <div className="md:col-span-12 lg:col-span-5">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_name')}</label>
-                          <input
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={customCourse.name}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder={t('placeholder_name')}
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_credit')}</label>
-                          <input
-                            type="number"
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={customCourse.credits}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, credits: Number(e.target.value) }))}
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_ects')}</label>
-                          <input
-                            type="number"
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={customCourse.ects}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, ects: Number(e.target.value) }))}
-                          />
-                        </div>
-                        <div className="md:col-span-4">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_type')}</label>
-                          <select
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={customCourse.type}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, type: e.target.value }))}
-                          >
-                            <option value="secmeli">{t('type_elective')}</option>
-                            <option value="mesleki_secmeli">{t('type_technical')}</option>
-                            <option value="zorunlu">{t('type_mandatory')}</option>
-                          </select>
-                        </div>
-                        <div className="md:col-span-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_grade')}</label>
-                          <select
-                            className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                            value={customCourse.grade}
-                            onChange={e => setCustomCourse(prev => ({ ...prev, grade: e.target.value }))}
-                          >
-                            {/* GRADE_SYSTEM keys minus YZ/DZ */}
-                            {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
-                              <option key={g} value={g}>{g}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="md:col-span-5 flex justify-end">
-                          <button
-                            onClick={addCustomSimulationCourse}
-                            disabled={!customCourse.code || !customCourse.name}
-                            className="w-full md:w-auto px-8 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
-                          >
-                            {t('btn_custom_add')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Ders Listesi */}
-                  <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
-                    <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                      <h3 className="font-bold text-gray-800">{t('sim_table_title')}</h3>
-                      <span className="text-sm text-gray-500">{simGpaResult?.usedCourses?.length || 0} Ders</span>
-                    </div>
-                    <div className="overflow-x-auto max-h-[600px]">
-                      <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-500 uppercase bg-gray-50 sticky top-0">
-                          <tr>
-                            <th className="px-6 py-3">Kod</th>
-                            <th className="px-6 py-3">Ders Adı</th>
-                            <th className="px-6 py-3 text-center">Kredi</th>
-                            <th className="px-6 py-3 text-center">Dönem</th>
-                            <th className="px-6 py-3 text-center">Simülasyon Notu</th>
-                            <th className="px-6 py-3 text-center">İşlem</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {simGpaResult?.usedCourses?.map((record) => (
-                            <tr key={record.id} className={`hover:bg-gray-50 transition-colors ${record.semester === 'Simülasyon' ? 'bg-indigo-50/30' : ''}`}>
-                              <td className="px-6 py-4 font-medium text-gray-900">{record.courseCode}</td>
-                              <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={record.courseName || ''}>{record.courseName}</td>
-                              <td className="px-6 py-4 text-center font-medium">{record.credits}</td>
-                              <td className="px-6 py-4 text-center text-xs text-gray-500">{record.semester}</td>
-                              <td className="px-6 py-4 text-center">
-                                <select
-                                  className={`px-3 py-1 rounded-full text-xs font-bold border-0 cursor-pointer focus:ring-2 focus:ring-indigo-500 ${record.grade.passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                    }`}
-                                  value={record.grade.letter}
-                                  onChange={(e) => updateSimulationGrade(record.id, e.target.value)}
-                                >
-                                  {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
-                                    <option key={g} value={g}>{g}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                {record.semester === 'Simülasyon' && (
-                                  <button
-                                    onClick={() => removeSimulationRecord(record.id)}
-                                    className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
-                                    title="Dersi Sil"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Navigation for Step 2 -> 3 */}
-                  <div className="flex justify-between mt-8">
-                    <button
-                      onClick={() => setStep(1)}
-                      className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      {t('btn_back')}
-                    </button>
-                    <button
-                      onClick={() => setStep(3)}
-                      className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                    >
-                      {t('btn_next_specialization')}
-                    </button>
-                  </div>
+                {/* Tabs */}
+                <div className="flex gap-6 border-b border-gray-200 mb-6">
+                  <button
+                    className={`pb-2 px-1 font-medium text-sm transition-colors ${!isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setIsCustomMode(false)}
+                  >
+                    {t('tab_list')}
+                  </button>
+                  <button
+                    className={`pb-2 px-1 font-medium text-sm transition-colors ${isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setIsCustomMode(true)}
+                  >
+                    {t('tab_custom')}
+                  </button>
                 </div>
+
+                {!isCustomMode ? (
+                  <div className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Arayın / Search Course</label>
+
+                      {/* Backdrop to close dropdown when clicking outside */}
+                      {isSearchOpen && (
+                        <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsSearchOpen(false)}></div>
+                      )}
+
+                      <div className="relative z-20">
+                        <input
+                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                          value={simAddCourseCode}
+                          onChange={(e) => {
+                            setSimAddCourseCode(e.target.value);
+                            setIsSearchOpen(true);
+                          }}
+                          onFocus={() => setIsSearchOpen(true)}
+                          placeholder="Örn: EEM403 veya Yapay Zeka..."
+                        />
+
+                        {isSearchOpen && (
+                          <ul className="absolute w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-100">
+                            {(() => {
+                              // Alınmış veya senaryoda olan derslerin kodlarını (ve intibak karşılıklarını) bul
+                              const takenCodes = new Set<string>();
+                              simulationRecords.forEach(r => {
+                                takenCodes.add(r.courseCode); // Orijinal kod
+                                // İntibak kontrolü
+                                const mapping = INTIBAK_MAPPINGS.find(m => m.oldCode === r.courseCode);
+                                if (mapping) {
+                                  takenCodes.add(mapping.newCode); // Yeni kod
+                                }
+                              });
+
+                              const searchLower = simAddCourseCode.toLowerCase();
+                              const filtered = ALL_COURSES
+                                .filter(c => !takenCodes.has(c.code))
+                                .filter(c =>
+                                  c.code.toLowerCase().includes(searchLower) ||
+                                  c.name.toLowerCase().includes(searchLower)
+                                )
+                                .sort((a, b) => a.code.localeCompare(b.code));
+
+                              if (filtered.length === 0) {
+                                return <li className="px-4 py-3 text-gray-500 text-sm">Sonuç bulunamadı.</li>
+                              }
+
+                              return filtered.map(c => (
+                                <li
+                                  key={c.code}
+                                  onClick={() => {
+                                    setSimAddCourseCode(c.code);
+                                    setIsSearchOpen(false);
+                                  }}
+                                  className="px-4 py-3 hover:bg-indigo-50 cursor-pointer transition-colors"
+                                >
+                                  <div className="font-bold text-gray-800">{c.code}</div>
+                                  <div className="text-sm text-gray-600 truncate">{c.name}</div>
+                                  <div className="text-xs text-gray-400 mt-1">{c.credits} Kredi | {c.ects} AKTS</div>
+                                </li>
+                              ));
+                            })()}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                    <div className="w-full md:w-32">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Hedef Not</label>
+                      <select
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={simAddGrade}
+                        onChange={(e) => setSimAddGrade(e.target.value)}
+                      >
+                        {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (simAddCourseCode) {
+                          addSimulationCourse(simAddCourseCode, simAddGrade);
+                          setSimAddCourseCode(''); // Reset
+                        }
+                      }}
+                      disabled={!simAddCourseCode}
+                      className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                    >
+                      Ekle
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
+                      <input
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 uppercase"
+                        value={customCourse.code}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, code: e.target.value }))}
+                        placeholder={t('placeholder_code')}
+                      />
+                    </div>
+                    <div className="md:col-span-12 lg:col-span-5">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_name')}</label>
+                      <input
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={customCourse.name}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder={t('placeholder_name')}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_credit')}</label>
+                      <input
+                        type="number"
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={customCourse.credits}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, credits: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_ects')}</label>
+                      <input
+                        type="number"
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={customCourse.ects}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, ects: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div className="md:col-span-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_type')}</label>
+                      <select
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={customCourse.type}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, type: e.target.value }))}
+                      >
+                        <option value="secmeli">{t('type_elective')}</option>
+                        <option value="mesleki_secmeli">{t('type_technical')}</option>
+                        <option value="zorunlu">{t('type_mandatory')}</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_grade')}</label>
+                      <select
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                        value={customCourse.grade}
+                        onChange={e => setCustomCourse(prev => ({ ...prev, grade: e.target.value }))}
+                      >
+                        {/* GRADE_SYSTEM keys minus YZ/DZ */}
+                        {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-5 flex justify-end">
+                      <button
+                        onClick={addCustomSimulationCourse}
+                        disabled={!customCourse.code || !customCourse.name}
+                        className="w-full md:w-auto px-8 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
+                      >
+                        {t('btn_custom_add')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Ders Listesi */}
+              <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
+                <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                  <h3 className="font-bold text-gray-800">{t('sim_table_title')}</h3>
+                  <span className="text-sm text-gray-500">{simGpaResult?.usedCourses?.length || 0} Ders</span>
+                </div>
+                <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-500 uppercase bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-6 py-3">Kod</th>
+                        <th className="px-6 py-3">Ders Adı</th>
+                        <th className="px-6 py-3 text-center">Kredi</th>
+                        <th className="px-6 py-3 text-center">Dönem</th>
+                        <th className="px-6 py-3 text-center">Simülasyon Notu</th>
+                        <th className="px-6 py-3 text-center">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {simGpaResult?.usedCourses?.map((record) => (
+                        <tr key={record.id} className={`hover:bg-gray-50 transition-colors ${record.semester === 'Simülasyon' ? 'bg-indigo-50/30' : ''}`}>
+                          <td className="px-6 py-4 font-medium text-gray-900">{record.courseCode}</td>
+                          <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={record.courseName || ''}>{record.courseName}</td>
+                          <td className="px-6 py-4 text-center font-medium">{record.credits}</td>
+                          <td className="px-6 py-4 text-center text-xs text-gray-500">{record.semester}</td>
+                          <td className="px-6 py-4 text-center">
+                            <select
+                              className={`px-3 py-1 rounded-full text-xs font-bold border-0 cursor-pointer focus:ring-2 focus:ring-indigo-500 ${record.grade.passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                }`}
+                              value={record.grade.letter}
+                              onChange={(e) => updateSimulationGrade(record.id, e.target.value)}
+                            >
+                              {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
+                                <option key={g} value={g}>{g}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {record.semester === 'Simülasyon' && (
+                              <button
+                                onClick={() => removeSimulationRecord(record.id)}
+                                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
+                                title="Dersi Sil"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Navigation for Step 2 -> 3 */}
+              <div className="flex justify-between mt-8">
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  {t('btn_back')}
+                </button>
+                <button
+                  onClick={() => setStep(3)}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  {t('btn_next_specialization')}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-            {/* Step 3: Specialization Analysis */}
-            {(step as any) === 3 && (
-              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {/* Header / Summary */}
-                <div className="bg-white rounded-xl shadow-lg p-8 border border-indigo-100">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Award className="text-indigo-600" />
-                    {t('spec_title')} <span className="text-sm font-normal text-gray-500 ml-2">{t('spec_subtitle').replace('{season}', analyzeSpecializations(records).activeSeason)}</span>
-                  </h2>
+        {/* Step 3: Specialization Analysis */}
+        {(step as any) === 3 && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header / Summary */}
+            <div className="bg-white rounded-xl shadow-lg p-8 border border-indigo-100">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Award className="text-indigo-600" />
+                {t('spec_title')} <span className="text-sm font-normal text-gray-500 ml-2">{t('spec_subtitle').replace('{season}', analyzeSpecializations(records).activeSeason)}</span>
+              </h2>
 
-                  {(() => {
-                    const analysis = analyzeSpecializations(records);
-                    const isTotalMet = analysis.totalTechnicalElectives >= 7;
+              {(() => {
+                const analysis = analyzeSpecializations(records);
+                const isTotalMet = analysis.totalTechnicalElectives >= 7;
 
-                    return (
-                      <div>
-                        <div className="flex flex-col md:flex-row gap-6 mb-8">
-                          <div className={`flex-1 p-4 rounded-xl border-l-4 ${isTotalMet ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'} shadow-sm`}>
-                            <h3 className="font-bold text-gray-800 mb-1">{t('total_tech_electives')}</h3>
-                            <div className="flex items-end gap-2">
-                              <span className="text-3xl font-bold">{analysis.totalTechnicalElectives}</span>
-                              <span className="text-gray-500 mb-1">{t('min_7_courses')}</span>
+                return (
+                  <div>
+                    <div className="flex flex-col md:flex-row gap-6 mb-8">
+                      <div className={`flex-1 p-4 rounded-xl border-l-4 ${isTotalMet ? 'bg-green-50 border-green-500' : 'bg-amber-50 border-amber-500'} shadow-sm`}>
+                        <h3 className="font-bold text-gray-800 mb-1">{t('total_tech_electives')}</h3>
+                        <div className="flex items-end gap-2">
+                          <span className="text-3xl font-bold">{analysis.totalTechnicalElectives}</span>
+                          <span className="text-gray-500 mb-1">{t('min_7_courses')}</span>
+                        </div>
+                        <p className={`text-sm mt-2 ${isTotalMet ? 'text-green-700' : 'text-amber-700'}`}>
+                          {isTotalMet ? t('total_courses_met_msg') : t('min_7_courses_warning')}
+                        </p>
+                      </div>
+
+                      <div className="flex-1 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-xl shadow-sm">
+                        <h3 className="font-bold text-gray-800 mb-1">{t('best_group_title')}</h3>
+                        <div className="text-xl font-bold text-blue-900">
+                          {analysis.bestGroup
+                            ? SPECIALIZATION_GROUPS.find(g => g.id === analysis.bestGroup)?.name
+                            : t('no_selection_yet')}
+                        </div>
+                        <p className="text-sm text-blue-700 mt-2">
+                          {t('best_group_desc')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">{t('group_progress_title')}</h3>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      {analysis.groups.map((groupResult) => (
+                        <div
+                          key={groupResult.group.id}
+                          className={`relative overflow-hidden rounded-xl border-2 transition-all duration-300 ${groupResult.isQualified
+                            ? 'border-green-500 bg-white shadow-md ring-4 ring-green-50/50'
+                            : 'border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md'
+                            }`}
+                        >
+                          {groupResult.isQualified && (
+                            <div className="absolute top-0 right-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg z-10">
+                              {t('completed')}
                             </div>
-                            <p className={`text-sm mt-2 ${isTotalMet ? 'text-green-700' : 'text-amber-700'}`}>
-                              {isTotalMet ? t('total_courses_met_msg') : t('min_7_courses_warning')}
-                            </p>
+                          )}
+
+                          <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                            <h4 className="font-bold text-lg text-gray-900 pr-8">{groupResult.group.name}</h4>
+                            <div className="flex items-center gap-4 mt-2">
+                              <div className="flex items-center text-sm font-medium">
+                                <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.takenCount >= 5 ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                                {t('progress_label')} {groupResult.takenCount}/5
+                              </div>
+                              <div className="flex items-center text-sm font-medium">
+                                <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.mandatoryMissing.length === 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                {t('mandatory_label')} {groupResult.mandatoryMissing.length === 0 ? t('status_ok') : `${groupResult.mandatoryMissing.length} ${t('status_missing')}`}
+                              </div>
+                            </div>
+                            {/* Progress bar */}
+                            <div className="mt-3 w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${groupResult.isQualified ? 'bg-green-500' : 'bg-indigo-500'}`}
+                                style={{ width: `${Math.min((groupResult.takenCount / 5) * 100, 100)}%` }}
+                              />
+                            </div>
                           </div>
 
-                          <div className="flex-1 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-xl shadow-sm">
-                            <h3 className="font-bold text-gray-800 mb-1">{t('best_group_title')}</h3>
-                            <div className="text-xl font-bold text-blue-900">
-                              {analysis.bestGroup
-                                ? SPECIALIZATION_GROUPS.find(g => g.id === analysis.bestGroup)?.name
-                                : t('no_selection_yet')}
+                          <div className="p-0">
+                            <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 p-2">
+                              <table className="w-full text-sm">
+                                <thead className="text-xs text-gray-400 bg-gray-50 sticky top-0">
+                                  <tr>
+                                    <th className="text-left py-2 px-3 font-medium">{t('col_code')}</th>
+                                    <th className="text-left py-2 px-3 font-medium">{t('col_name')}</th>
+                                    <th className="text-center py-2 px-3 font-medium">{t('col_status')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {groupResult.coursesStatus.map((statusItem, idx) => (
+                                    <tr key={idx} className="group hover:bg-gray-50">
+                                      <td className="py-2 px-3 font-mono text-xs text-gray-600">
+                                        {statusItem.course.code}
+                                        {statusItem.course.isMandatory && <span className="ml-1 text-red-500 font-bold" title="Zorunlu">(Z)</span>}
+                                      </td>
+                                      <td className="py-2 px-3 text-gray-700 truncate max-w-[180px]" title={statusItem.course.name}>
+                                        {statusItem.course.name}
+                                        <div className="text-[10px] text-gray-400">{statusItem.course.term}</div>
+                                      </td>
+                                      <td className="py-2 px-3 text-center">
+                                        {statusItem.status === 'taken' && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                            <CheckCircle size={12} className="mr-1" /> {t('status_taken')}
+                                          </span>
+                                        )}
+                                        {statusItem.status === 'available' && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                            {t('status_available')}
+                                          </span>
+                                        )}
+                                        {statusItem.status === 'locked' && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500" title={`Önşart: ${statusItem.missingPrereq}`}>
+                                            🔒 {statusItem.missingPrereq}
+                                          </span>
+                                        )}
+                                        {statusItem.status === 'wrong_term' && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-400 border border-gray-100 italic">
+                                            ⏳ {statusItem.course.term} {t('status_term_suffix')}
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
-                            <p className="text-sm text-blue-700 mt-2">
-                              {t('best_group_desc')}
-                            </p>
                           </div>
                         </div>
+                      ))}
+                    </div>
 
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">{t('group_progress_title')}</h3>
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                          {analysis.groups.map((groupResult) => (
-                            <div
-                              key={groupResult.group.id}
-                              className={`relative overflow-hidden rounded-xl border-2 transition-all duration-300 ${groupResult.isQualified
-                                ? 'border-green-500 bg-white shadow-md ring-4 ring-green-50/50'
-                                : 'border-gray-200 bg-white hover:border-indigo-300 hover:shadow-md'
-                                }`}
-                            >
-                              {groupResult.isQualified && (
-                                <div className="absolute top-0 right-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-bl-lg z-10">
-                                  {t('completed')}
-                                </div>
+                    <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+                      <h4 className="font-bold flex items-center gap-2 mb-2"><Info size={16} /> Kurallar Hatırlatması:</h4>
+                      <ul className="list-disc list-inside space-y-1 ml-1">
+                        <li>Mezuniyet için toplam <strong>en az 7</strong> mesleki seçmeli ders (Minimum 35 AKTS) alınmalıdır.</li>
+                        <li>Bu derslerin <strong>en az 5 tanesi</strong> (Min 25 AKTS) tek bir uzmanlaşma grubundan seçilmelidir.</li>
+                        <li>Seçilen grubun altındaki <strong>(Z)</strong> işaretli zorunlu derslerin tamamı başarılmalıdır.</li>
+                        <li>"Research in..." derslerinden aynı dönem için en fazla 1, toplamda en fazla 2 adet alınabilir.</li>
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex justify-between">
+              <button
+                onClick={() => setStep(2)} // Corrected: Back to Analysis/Simulation (Step 2)
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                ← Geri
+              </button>
+              <button
+                onClick={() => setStep(4)} // Forward to Schedule Planning (Step 4)
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                Ders Programı →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Schedule Planning */}
+        {(step as any) === 4 && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-lg p-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('schedule_title')}</h2>
+              <p className="text-gray-600 mb-6">{t('schedule_desc')}</p>
+
+              {/* Tab Selection */}
+              <div className="flex gap-4 border-b border-gray-200 mb-6">
+                <button
+                  onClick={() => setActiveScheduleTab('manual')}
+                  className={`pb-3 px-4 font-medium transition-colors ${activeScheduleTab === 'manual'
+                    ? 'border-b-2 border-indigo-600 text-indigo-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  {t('tab_manual')}
+                </button>
+                <button
+                  onClick={() => setActiveScheduleTab('pdf')}
+                  className={`pb-3 px-4 font-medium transition-colors ${activeScheduleTab === 'pdf'
+                    ? 'border-b-2 border-indigo-600 text-indigo-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                  {t('tab_pdf')}
+                </button>
+              </div>
+
+              {/* Manual Entry Form */}
+              {activeScheduleTab === 'manual' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
+                      <input
+                        type="text"
+                        placeholder="EEM321"
+                        value={manualCourse.courseCode}
+                        onChange={(e) => setManualCourse({ ...manualCourse, courseCode: e.target.value.toUpperCase() })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('day_label') || 'Gün'}</label>
+                      <select
+                        value={manualCourse.day}
+                        onChange={(e) => setManualCourse({ ...manualCourse, day: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="">Seç</option>
+                        <option value="Pazartesi">Pazartesi</option>
+                        <option value="Salı">Salı</option>
+                        <option value="Çarşamba">Çarşamba</option>
+                        <option value="Perşembe">Perşembe</option>
+                        <option value="Cuma">Cuma</option>
+                        <option value="Cumartesi">Cumartesi</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_start_time') || 'Başlangıç'}</label>
+                      <input
+                        type="time"
+                        value={manualCourse.startTime}
+                        onChange={(e) => setManualCourse({ ...manualCourse, startTime: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_end_time') || 'Bitiş'}</label>
+                      <input
+                        type="time"
+                        value={manualCourse.endTime}
+                        onChange={(e) => setManualCourse({ ...manualCourse, endTime: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (manualCourse.courseCode && manualCourse.day && manualCourse.startTime && manualCourse.endTime) {
+                        setSelectedSchedule([...selectedSchedule, {
+                          courseCode: manualCourse.courseCode,
+                          section: '1',
+                          day: manualCourse.day,
+                          startTime: manualCourse.startTime,
+                          endTime: manualCourse.endTime,
+                          type: 'lecture',
+                          async: false
+                        }]);
+                        setManualCourse({ courseCode: '', day: '', startTime: '', endTime: '' });
+                      }
+                    }}
+                    disabled={!manualCourse.courseCode || !manualCourse.day || !manualCourse.startTime || !manualCourse.endTime}
+                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {t('btn_manual_add')}
+                  </button>
+                </div>
+              )}
+
+              {/* PDF Upload */}
+              {activeScheduleTab === 'pdf' && (
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleSchedulePdfUpload}
+                      className="hidden"
+                      id="schedule-pdf-input"
+                    />
+                    <label htmlFor="schedule-pdf-input" className="cursor-pointer">
+                      <div className="text-gray-600">
+                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <p className="mt-2 text-sm font-medium">{t('pdf_drop_title')}</p>
+                        <p className="mt-1 text-xs text-gray-500">{t('pdf_drop_desc')}</p>
+                      </div>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {t('pdf_drop_hint')}
+                  </p>
+                </div>
+              )}
+
+              {/* Department Schedule Browser */}
+              {departmentSchedule.length > 0 && (
+                <div className="mt-8 p-6 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-indigo-900">{t('dept_schedule_title')}</h3>
+                    <button
+                      onClick={autoAddFailedCourses}
+                      className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 flex items-center gap-2"
+                    >
+                      <AlertCircle size={16} />
+                      {t('auto_add_failed')}
+                    </button>
+                  </div>
+                  <p className="text-sm text-indigo-700 mb-4">
+                    {t('dept_schedule_desc')}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto">
+                    {Array.from(new Set(departmentSchedule.map(s => s.courseCode))).sort().map(code => {
+                      const allSections = departmentSchedule.filter(s => s.courseCode === code);
+                      const lectures = allSections.filter(s => s.type === 'lecture');
+                      const labs = allSections.filter(s => s.type === 'lab');
+
+                      return (
+                        <div key={code} className="bg-white p-4 rounded-lg shadow-sm border border-indigo-100">
+                          {/* Course Header */}
+                          <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-100">
+                            <div className="font-bold text-gray-800 text-lg">{code}</div>
+                            <div className="flex gap-1">
+                              {lectures.length > 0 && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                  {lectures.length} {t('lecture')}
+                                </span>
                               )}
+                              {labs.length > 0 && (
+                                <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">
+                                  {labs.length} {t('lab')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                              <div className="p-5 border-b border-gray-100 bg-gray-50/50">
-                                <h4 className="font-bold text-lg text-gray-900 pr-8">{groupResult.group.name}</h4>
-                                <div className="flex items-center gap-4 mt-2">
-                                  <div className="flex items-center text-sm font-medium">
-                                    <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.takenCount >= 5 ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                                    {t('progress_label')} {groupResult.takenCount}/5
-                                  </div>
-                                  <div className="flex items-center text-sm font-medium">
-                                    <span className={`w-2 h-2 rounded-full mr-2 ${groupResult.mandatoryMissing.length === 0 ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                    {t('mandatory_label')} {groupResult.mandatoryMissing.length === 0 ? t('status_ok') : `${groupResult.mandatoryMissing.length} ${t('status_missing')}`}
-                                  </div>
+                          {/* Lecture Sessions */}
+                          {lectures.length > 0 && (
+                            <div className="mb-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <div className="text-xs font-semibold text-blue-700 flex items-center gap-1">
+                                  📖 Teorik Ders
                                 </div>
-                                {/* Progress bar */}
-                                <div className="mt-3 w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${groupResult.isQualified ? 'bg-green-500' : 'bg-indigo-500'}`}
-                                    style={{ width: `${Math.min((groupResult.takenCount / 5) * 100, 100)}%` }}
-                                  />
+                                <button
+                                  onClick={() => {
+                                    // Add ALL lecture sessions at once
+                                    const newSessions = lectures.filter(sec =>
+                                      !selectedSchedule.some(s =>
+                                        s.courseCode === sec.courseCode && s.day === sec.day && s.startTime === sec.startTime
+                                      )
+                                    );
+                                    if (newSessions.length > 0) {
+                                      setSelectedSchedule([...selectedSchedule, ...newSessions]);
+                                    }
+                                  }}
+                                  className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
+                                >
+                                  {t('add_all')} ({lectures.length})
+                                </button>
+                              </div>
+                              <div className="space-y-1 text-xs text-gray-600">
+                                {lectures.map((sec, idx) => (
+                                  <div key={`lec-${idx}`} className="flex items-center gap-2 p-1 bg-blue-50 rounded">
+                                    <span className="font-medium">{sec.day}</span>
+                                    <span className="font-mono">{sec.startTime}-{sec.endTime}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Lab Sessions - Grouped by Section (Mutual Exclusion) */}
+                          {labs.length > 0 && (() => {
+                            // Check if any lab group for this course is already selected
+                            const selectedLabSection = selectedSchedule.find(s =>
+                              s.courseCode === code && s.type === 'lab'
+                            )?.section;
+
+                            return (
+                              <div>
+                                <div className="text-xs font-semibold text-orange-700 mb-2 flex items-center gap-1">
+                                  🔬 Laboratuvar Grupları
+                                  {selectedLabSection && (
+                                    <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded">
+                                      ✓ {t('group')} {selectedLabSection} {t('selected_suffix') || 'seçildi'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="space-y-2">
+                                  {/* Group labs by section */}
+                                  {Array.from(new Set(labs.map(l => l.section))).sort().map(section => {
+                                    const sectionLabs = labs.filter(l => l.section === section);
+                                    const isThisGroupSelected = selectedLabSection === section;
+                                    const isOtherGroupSelected = selectedLabSection && selectedLabSection !== section;
+
+                                    return (
+                                      <div
+                                        key={section}
+                                        className={`p-2 rounded border ${isThisGroupSelected
+                                          ? 'bg-green-50 border-green-300'
+                                          : isOtherGroupSelected
+                                            ? 'bg-gray-100 border-gray-200 opacity-50'
+                                            : 'bg-orange-50 border-orange-100'
+                                          }`}
+                                      >
+                                        <div className="flex justify-between items-center mb-1">
+                                          <span className={`text-xs font-bold ${isThisGroupSelected ? 'text-green-800' : 'text-orange-800'}`}>
+                                            Grup {section}
+                                          </span>
+                                          {isThisGroupSelected ? (
+                                            <button
+                                              onClick={() => {
+                                                // Remove this group's sessions
+                                                setSelectedSchedule(selectedSchedule.filter(s =>
+                                                  !(s.courseCode === code && s.type === 'lab')
+                                                ));
+                                              }}
+                                              className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                                            >
+                                              Kaldır
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => {
+                                                if (isOtherGroupSelected) return; // Disabled
+                                                // Add ALL sessions of this lab group
+                                                const newSessions = sectionLabs.filter(sec =>
+                                                  !selectedSchedule.some(s =>
+                                                    s.courseCode === sec.courseCode && s.day === sec.day && s.startTime === sec.startTime
+                                                  )
+                                                );
+                                                if (newSessions.length > 0) {
+                                                  setSelectedSchedule([...selectedSchedule, ...newSessions]);
+                                                }
+                                              }}
+                                              disabled={!!isOtherGroupSelected}
+                                              className={`text-xs px-2 py-0.5 rounded transition-colors ${isOtherGroupSelected
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                : 'bg-orange-500 text-white hover:bg-orange-600'
+                                                }`}
+                                            >
+                                              {isOtherGroupSelected ? 'Başka grup seçili' : 'Ekle'}
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="text-xs text-orange-700">
+                                          {sectionLabs.map((sec, idx) => (
+                                            <span key={idx}>
+                                              {sec.day} {sec.startTime}-{sec.endTime}
+                                              {idx < sectionLabs.length - 1 ? ', ' : ''}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-                              <div className="p-0">
-                                <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 p-2">
-                                  <table className="w-full text-sm">
-                                    <thead className="text-xs text-gray-400 bg-gray-50 sticky top-0">
-                                      <tr>
-                                        <th className="text-left py-2 px-3 font-medium">{t('col_code')}</th>
-                                        <th className="text-left py-2 px-3 font-medium">{t('col_name')}</th>
-                                        <th className="text-center py-2 px-3 font-medium">{t('col_status')}</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-50">
-                                      {groupResult.coursesStatus.map((statusItem, idx) => (
-                                        <tr key={idx} className="group hover:bg-gray-50">
-                                          <td className="py-2 px-3 font-mono text-xs text-gray-600">
-                                            {statusItem.course.code}
-                                            {statusItem.course.isMandatory && <span className="ml-1 text-red-500 font-bold" title="Zorunlu">(Z)</span>}
-                                          </td>
-                                          <td className="py-2 px-3 text-gray-700 truncate max-w-[180px]" title={statusItem.course.name}>
-                                            {statusItem.course.name}
-                                            <div className="text-[10px] text-gray-400">{statusItem.course.term}</div>
-                                          </td>
-                                          <td className="py-2 px-3 text-center">
-                                            {statusItem.status === 'taken' && (
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                <CheckCircle size={12} className="mr-1" /> {t('status_taken')}
-                                              </span>
-                                            )}
-                                            {statusItem.status === 'available' && (
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                                {t('status_available')}
-                                              </span>
-                                            )}
-                                            {statusItem.status === 'locked' && (
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500" title={`Önşart: ${statusItem.missingPrereq}`}>
-                                                🔒 {statusItem.missingPrereq}
-                                              </span>
-                                            )}
-                                            {statusItem.status === 'wrong_term' && (
-                                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-400 border border-gray-100 italic">
-                                                ⏳ {statusItem.course.term} {t('status_term_suffix')}
-                                              </span>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+              {/* Weekly Schedule Grid */}
+              {selectedSchedule.length > 0 && (
+                <div className="mt-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-900">{t('weekly_schedule_title')}</h3>
+                    <button
+                      onClick={() => setSelectedSchedule([])}
+                      className="px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      {t('clear_schedule')}
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="sticky left-0 z-10 bg-red-900 text-white px-4 py-3 text-sm font-medium border border-gray-300">
+                            {t('time_slot')}
+                          </th>
+                          {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'].map((day) => (
+                            <th key={day} className="bg-blue-700 text-white px-4 py-3 text-sm font-medium border border-gray-300 min-w-[120px]">
+                              {day}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {generateTimeSlots().map((timeSlot) => (
+                          <tr key={timeSlot} className="hover:bg-gray-50">
+                            <td className="sticky left-0 z-10 bg-red-900 text-white px-4 py-3 text-xs font-medium border border-gray-300 whitespace-nowrap">
+                              {timeSlot}
+                            </td>
+                            {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'].map((day) => {
+                              const course = selectedSchedule.find((s) =>
+                                s.day === day && isTimeInSlot(timeSlot, s.startTime, s.endTime)
+                              );
+                              return (
+                                <td
+                                  key={day}
+                                  className={`px-2 py-3 text-xs text-center border border-gray-300 ${course ? 'bg-gray-200 font-medium' : 'bg-white'
+                                    }`}
+                                >
+                                  {course ? (
+                                    <div className="group relative">
+                                      <div className="font-bold text-gray-900">{course.courseCode}</div>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedSchedule(selectedSchedule.filter(s =>
+                                            !(s.courseCode === course.courseCode && s.day === course.day && s.startTime === course.startTime)
+                                          ));
+                                        }}
+                                        className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800"
+                                        title="Dersi Sil"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Conflict Analysis */}
+                  <div className="mt-6">
+                    <h3 className="font-semibold text-gray-900 mb-3">{t('conflict_analysis_title')}</h3>
+                    {(() => {
+                      const conflicts = detectScheduleConflicts(selectedSchedule);
+                      return conflicts.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {conflicts.map((c, i) => (
+                            <div key={i} className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
+                              <AlertCircle className="text-red-500 mt-0.5 mr-2 shrink-0" size={18} />
+                              <div>
+                                <div className="font-bold text-red-900 text-sm">{t('conflict_detected')}</div>
+                                <div className="text-red-700 text-sm mt-1">{c.courses.join(' ve ')}</div>
+                                <div className="text-red-600 text-xs mt-0.5">{c.time}</div>
                               </div>
                             </div>
                           ))}
                         </div>
-
-                        <div className="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                          <h4 className="font-bold flex items-center gap-2 mb-2"><Info size={16} /> Kurallar Hatırlatması:</h4>
-                          <ul className="list-disc list-inside space-y-1 ml-1">
-                            <li>Mezuniyet için toplam <strong>en az 7</strong> mesleki seçmeli ders (Minimum 35 AKTS) alınmalıdır.</li>
-                            <li>Bu derslerin <strong>en az 5 tanesi</strong> (Min 25 AKTS) tek bir uzmanlaşma grubundan seçilmelidir.</li>
-                            <li>Seçilen grubun altındaki <strong>(Z)</strong> işaretli zorunlu derslerin tamamı başarılmalıdır.</li>
-                            <li>"Research in..." derslerinden aynı dönem için en fazla 1, toplamda en fazla 2 adet alınabilir.</li>
-                          </ul>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => setStep(2)} // Corrected: Back to Analysis/Simulation (Step 2)
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    ← Geri
-                  </button>
-                  <button
-                    onClick={() => setStep(4)} // Forward to Schedule Planning (Step 4)
-                    className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                  >
-                    Ders Programı →
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Schedule Planning */}
-            {(step as any) === 4 && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-xl shadow-lg p-8">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('schedule_title')}</h2>
-                  <p className="text-gray-600 mb-6">{t('schedule_desc')}</p>
-
-                  {/* Tab Selection */}
-                  <div className="flex gap-4 border-b border-gray-200 mb-6">
-                    <button
-                      onClick={() => setActiveScheduleTab('manual')}
-                      className={`pb-3 px-4 font-medium transition-colors ${activeScheduleTab === 'manual'
-                        ? 'border-b-2 border-indigo-600 text-indigo-600'
-                        : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                      {t('tab_manual')}
-                    </button>
-                    <button
-                      onClick={() => setActiveScheduleTab('pdf')}
-                      className={`pb-3 px-4 font-medium transition-colors ${activeScheduleTab === 'pdf'
-                        ? 'border-b-2 border-indigo-600 text-indigo-600'
-                        : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                      {t('tab_pdf')}
-                    </button>
-                  </div>
-
-                  {/* Manual Entry Form */}
-                  {activeScheduleTab === 'manual' && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
-                          <input
-                            type="text"
-                            placeholder="EEM321"
-                            value={manualCourse.courseCode}
-                            onChange={(e) => setManualCourse({ ...manualCourse, courseCode: e.target.value.toUpperCase() })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('day_label') || 'Gün'}</label>
-                          <select
-                            value={manualCourse.day}
-                            onChange={(e) => setManualCourse({ ...manualCourse, day: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          >
-                            <option value="">Seç</option>
-                            <option value="Pazartesi">Pazartesi</option>
-                            <option value="Salı">Salı</option>
-                            <option value="Çarşamba">Çarşamba</option>
-                            <option value="Perşembe">Perşembe</option>
-                            <option value="Cuma">Cuma</option>
-                            <option value="Cumartesi">Cumartesi</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_start_time') || 'Başlangıç'}</label>
-                          <input
-                            type="time"
-                            value={manualCourse.startTime}
-                            onChange={(e) => setManualCourse({ ...manualCourse, startTime: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_end_time') || 'Bitiş'}</label>
-                          <input
-                            type="time"
-                            value={manualCourse.endTime}
-                            onChange={(e) => setManualCourse({ ...manualCourse, endTime: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (manualCourse.courseCode && manualCourse.day && manualCourse.startTime && manualCourse.endTime) {
-                            setSelectedSchedule([...selectedSchedule, {
-                              courseCode: manualCourse.courseCode,
-                              section: '1',
-                              day: manualCourse.day,
-                              startTime: manualCourse.startTime,
-                              endTime: manualCourse.endTime,
-                              type: 'lecture',
-                              async: false
-                            }]);
-                            setManualCourse({ courseCode: '', day: '', startTime: '', endTime: '' });
-                          }
-                        }}
-                        disabled={!manualCourse.courseCode || !manualCourse.day || !manualCourse.startTime || !manualCourse.endTime}
-                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {t('btn_manual_add')}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* PDF Upload */}
-                  {activeScheduleTab === 'pdf' && (
-                    <div className="space-y-4">
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          onChange={handleSchedulePdfUpload}
-                          className="hidden"
-                          id="schedule-pdf-input"
-                        />
-                        <label htmlFor="schedule-pdf-input" className="cursor-pointer">
-                          <div className="text-gray-600">
-                            <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            <p className="mt-2 text-sm font-medium">{t('pdf_drop_title')}</p>
-                            <p className="mt-1 text-xs text-gray-500">{t('pdf_drop_desc')}</p>
-                          </div>
-                        </label>
-                      </div>
-                      <p className="text-xs text-gray-500">
-                        {t('pdf_drop_hint')}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Department Schedule Browser */}
-                  {departmentSchedule.length > 0 && (
-                    <div className="mt-8 p-6 bg-indigo-50 rounded-xl border border-indigo-100">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold text-indigo-900">{t('dept_schedule_title')}</h3>
-                        <button
-                          onClick={autoAddFailedCourses}
-                          className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 flex items-center gap-2"
-                        >
-                          <AlertCircle size={16} />
-                          {t('auto_add_failed')}
-                        </button>
-                      </div>
-                      <p className="text-sm text-indigo-700 mb-4">
-                        {t('dept_schedule_desc')}
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[500px] overflow-y-auto">
-                        {Array.from(new Set(departmentSchedule.map(s => s.courseCode))).sort().map(code => {
-                          const allSections = departmentSchedule.filter(s => s.courseCode === code);
-                          const lectures = allSections.filter(s => s.type === 'lecture');
-                          const labs = allSections.filter(s => s.type === 'lab');
-
-                          return (
-                            <div key={code} className="bg-white p-4 rounded-lg shadow-sm border border-indigo-100">
-                              {/* Course Header */}
-                              <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-100">
-                                <div className="font-bold text-gray-800 text-lg">{code}</div>
-                                <div className="flex gap-1">
-                                  {lectures.length > 0 && (
-                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                                      {lectures.length} {t('lecture')}
-                                    </span>
-                                  )}
-                                  {labs.length > 0 && (
-                                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">
-                                      {labs.length} {t('lab')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Lecture Sessions */}
-                              {lectures.length > 0 && (
-                                <div className="mb-3">
-                                  <div className="flex justify-between items-center mb-2">
-                                    <div className="text-xs font-semibold text-blue-700 flex items-center gap-1">
-                                      📖 Teorik Ders
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        // Add ALL lecture sessions at once
-                                        const newSessions = lectures.filter(sec =>
-                                          !selectedSchedule.some(s =>
-                                            s.courseCode === sec.courseCode && s.day === sec.day && s.startTime === sec.startTime
-                                          )
-                                        );
-                                        if (newSessions.length > 0) {
-                                          setSelectedSchedule([...selectedSchedule, ...newSessions]);
-                                        }
-                                      }}
-                                      className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
-                                    >
-                                      {t('add_all')} ({lectures.length})
-                                    </button>
-                                  </div>
-                                  <div className="space-y-1 text-xs text-gray-600">
-                                    {lectures.map((sec, idx) => (
-                                      <div key={`lec-${idx}`} className="flex items-center gap-2 p-1 bg-blue-50 rounded">
-                                        <span className="font-medium">{sec.day}</span>
-                                        <span className="font-mono">{sec.startTime}-{sec.endTime}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Lab Sessions - Grouped by Section (Mutual Exclusion) */}
-                              {labs.length > 0 && (() => {
-                                // Check if any lab group for this course is already selected
-                                const selectedLabSection = selectedSchedule.find(s =>
-                                  s.courseCode === code && s.type === 'lab'
-                                )?.section;
-
-                                return (
-                                  <div>
-                                    <div className="text-xs font-semibold text-orange-700 mb-2 flex items-center gap-1">
-                                      🔬 Laboratuvar Grupları
-                                      {selectedLabSection && (
-                                        <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded">
-                                          ✓ {t('group')} {selectedLabSection} {t('selected_suffix') || 'seçildi'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="space-y-2">
-                                      {/* Group labs by section */}
-                                      {Array.from(new Set(labs.map(l => l.section))).sort().map(section => {
-                                        const sectionLabs = labs.filter(l => l.section === section);
-                                        const isThisGroupSelected = selectedLabSection === section;
-                                        const isOtherGroupSelected = selectedLabSection && selectedLabSection !== section;
-
-                                        return (
-                                          <div
-                                            key={section}
-                                            className={`p-2 rounded border ${isThisGroupSelected
-                                              ? 'bg-green-50 border-green-300'
-                                              : isOtherGroupSelected
-                                                ? 'bg-gray-100 border-gray-200 opacity-50'
-                                                : 'bg-orange-50 border-orange-100'
-                                              }`}
-                                          >
-                                            <div className="flex justify-between items-center mb-1">
-                                              <span className={`text-xs font-bold ${isThisGroupSelected ? 'text-green-800' : 'text-orange-800'}`}>
-                                                Grup {section}
-                                              </span>
-                                              {isThisGroupSelected ? (
-                                                <button
-                                                  onClick={() => {
-                                                    // Remove this group's sessions
-                                                    setSelectedSchedule(selectedSchedule.filter(s =>
-                                                      !(s.courseCode === code && s.type === 'lab')
-                                                    ));
-                                                  }}
-                                                  className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
-                                                >
-                                                  Kaldır
-                                                </button>
-                                              ) : (
-                                                <button
-                                                  onClick={() => {
-                                                    if (isOtherGroupSelected) return; // Disabled
-                                                    // Add ALL sessions of this lab group
-                                                    const newSessions = sectionLabs.filter(sec =>
-                                                      !selectedSchedule.some(s =>
-                                                        s.courseCode === sec.courseCode && s.day === sec.day && s.startTime === sec.startTime
-                                                      )
-                                                    );
-                                                    if (newSessions.length > 0) {
-                                                      setSelectedSchedule([...selectedSchedule, ...newSessions]);
-                                                    }
-                                                  }}
-                                                  disabled={!!isOtherGroupSelected}
-                                                  className={`text-xs px-2 py-0.5 rounded transition-colors ${isOtherGroupSelected
-                                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                    : 'bg-orange-500 text-white hover:bg-orange-600'
-                                                    }`}
-                                                >
-                                                  {isOtherGroupSelected ? 'Başka grup seçili' : 'Ekle'}
-                                                </button>
-                                              )}
-                                            </div>
-                                            <div className="text-xs text-orange-700">
-                                              {sectionLabs.map((sec, idx) => (
-                                                <span key={idx}>
-                                                  {sec.day} {sec.startTime}-{sec.endTime}
-                                                  {idx < sectionLabs.length - 1 ? ', ' : ''}
-                                                </span>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Weekly Schedule Grid */}
-                  {selectedSchedule.length > 0 && (
-                    <div className="mt-8">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold text-gray-900">{t('weekly_schedule_title')}</h3>
-                        <button
-                          onClick={() => setSelectedSchedule([])}
-                          className="px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
-                        >
-                          {t('clear_schedule')}
-                        </button>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse">
-                          <thead>
-                            <tr>
-                              <th className="sticky left-0 z-10 bg-red-900 text-white px-4 py-3 text-sm font-medium border border-gray-300">
-                                {t('time_slot')}
-                              </th>
-                              {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'].map((day) => (
-                                <th key={day} className="bg-blue-700 text-white px-4 py-3 text-sm font-medium border border-gray-300 min-w-[120px]">
-                                  {day}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {generateTimeSlots().map((timeSlot) => (
-                              <tr key={timeSlot} className="hover:bg-gray-50">
-                                <td className="sticky left-0 z-10 bg-red-900 text-white px-4 py-3 text-xs font-medium border border-gray-300 whitespace-nowrap">
-                                  {timeSlot}
-                                </td>
-                                {['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'].map((day) => {
-                                  const course = selectedSchedule.find((s) =>
-                                    s.day === day && isTimeInSlot(timeSlot, s.startTime, s.endTime)
-                                  );
-                                  return (
-                                    <td
-                                      key={day}
-                                      className={`px-2 py-3 text-xs text-center border border-gray-300 ${course ? 'bg-gray-200 font-medium' : 'bg-white'
-                                        }`}
-                                    >
-                                      {course ? (
-                                        <div className="group relative">
-                                          <div className="font-bold text-gray-900">{course.courseCode}</div>
-                                          <button
-                                            onClick={() => {
-                                              setSelectedSchedule(selectedSchedule.filter(s =>
-                                                !(s.courseCode === course.courseCode && s.day === course.day && s.startTime === course.startTime)
-                                              ));
-                                            }}
-                                            className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 text-red-600 hover:text-red-800"
-                                            title="Dersi Sil"
-                                          >
-                                            ×
-                                          </button>
-                                        </div>
-                                      ) : null}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Conflict Analysis */}
-                      <div className="mt-6">
-                        <h3 className="font-semibold text-gray-900 mb-3">{t('conflict_analysis_title')}</h3>
-                        {(() => {
-                          const conflicts = detectScheduleConflicts(selectedSchedule);
-                          return conflicts.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {conflicts.map((c, i) => (
-                                <div key={i} className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
-                                  <AlertCircle className="text-red-500 mt-0.5 mr-2 shrink-0" size={18} />
-                                  <div>
-                                    <div className="font-bold text-red-900 text-sm">{t('conflict_detected')}</div>
-                                    <div className="text-red-700 text-sm mt-1">{c.courses.join(' ve ')}</div>
-                                    <div className="text-red-600 text-xs mt-0.5">{c.time}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                              <p className="text-sm text-green-800 flex items-center">
-                                <CheckCircle className="mr-2" size={16} />
-                                {t('conflict_success')}
-                              </p>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-                <div className="flex justify-between items-center">
-                  <button
-                    onClick={() => setStep(3)} // Back to Specialization Step 3
-                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    {t('btn_back')}
-                  </button>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setStep(5)} // Skip schedule simulation
-                      className="px-6 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
-                    >
-                      {t('btn_skip')}
-                    </button>
-                    <button
-                      onClick={() => setStep(5)} // Forward to Report
-                      className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                    >
-                      {t('download_report')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 5: Report */}
-            {
-              (step as any) === 5 && gpa && (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-xl shadow-lg p-8">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('report_title')}</h2>
-                    <div className="space-y-4 mb-6">
-                      <div className="p-4 bg-gray-50 rounded-lg">
-                        <h3 className="font-semibold mb-2">{t('grade_status_title')}</h3>
-                        <p>{t('gno_caps') || 'GNO'}: <strong>{gpa.gno.toFixed(2)}</strong> | {t('ects_caps') || 'AKTS'}: <strong>{gpa.totalECTS}/240</strong></p>
-                      </div>
-                      {selectedArea && (
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <h3 className="font-semibold mb-2">{t('best_spec_title')}</h3>
-                          <p>
-                            {(() => {
-                              const analysis = analyzeSpecializations(records);
-                              const best = SPECIALIZATION_GROUPS.find(g => g.id === analysis.bestGroup);
-                              if (best) {
-                                const groupResult = analysis.groups.find(g => g.group.id === best.id);
-                                return (
-                                  <>
-                                    <strong>{best.name}</strong>
-                                    <p className="text-sm text-gray-600 mt-1">
-                                      {t('progress_label')} {groupResult?.takenCount}/5 {t('courses_lower') || 'ders'}
-                                    </p>
-                                  </>
-                                )
-                              }
-                              return <span>{t('no_data_yet')}</span>
-                            })()}
+                      ) : (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm text-green-800 flex items-center">
+                            <CheckCircle className="mr-2" size={16} />
+                            {t('conflict_success')}
                           </p>
                         </div>
-                      )}
-                      {eem413Check && (
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <h3 className="font-semibold mb-2">{t('eem413_title')}</h3>
-                          <p className={eem413Check.eligible ? 'text-green-600' : 'text-red-600'}>
-                            {eem413Check.eligible ? t('can_take_short') : t('cannot_take_short')}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      <button
-                        onClick={() => {
-                          const passedCodes = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
-                          const simResult = simulationRecords.length > 0 ? calculateGPA(simulationRecords) : null;
-
-                          generateAcademicReport({
-                            studentName: 'Öğrenci',
-                            studentId: '123456789',
-                            department: 'Elektrik-Elektronik Mühendisliği',
-                            gpa: gpa,
-                            failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
-                            allRecords: records,
-                            simulationGpa: simResult,
-                            simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined
-                          });
-                        }}
-                        className="w-full flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg transform hover:scale-[1.02]"
-                      >
-                        <Download size={24} className="mr-2" />
-                        <span className="font-bold text-lg">{t('download_pdf_report')}</span>
-                      </button>
-                      <p className="text-center text-sm text-gray-500 mt-4">
-                        {t('report_footer_info')}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <button
-                      onClick={() => setStep(4)} // Back to Schedule Planning
-                      className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      {t('btn_back')}
-                    </button>
-                    <button
-                      onClick={() => setStep(1)}
-                      className="px-6 py-2 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50"
-                    >
-                      {t('btn_new_analysis')}
-                    </button>
+                      );
+                    })()}
                   </div>
                 </div>
-            })
-        </div>
+              )}
 
-            <footer className="bg-white border-t mt-12">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                <p className="text-center text-gray-600 text-sm font-medium">
-                  <span className="md:hidden">{t('footer_title_mobile')}</span>
-                  <span className="hidden md:block">{t('footer_title_desktop')}</span>
-                </p>
-
-                <div className="flex flex-col items-center gap-3 mt-4">
-                  <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100 shadow-sm">
-                    <ShieldCheck size={16} />
-                    <span className="font-medium">{t('footer_security')}</span>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <span>{t('footer_author')}</span>
-                    <span className="text-gray-300">|</span>
-                    <a href="https://github.com/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
-                      <Github size={14} />
-                      <span>{t('footer_opensource')}</span>
-                    </a>
-                  </div>
-                </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <button
+                onClick={() => setStep(3)} // Back to Specialization Step 3
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                {t('btn_back')}
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(5)} // Skip schedule simulation
+                  className="px-6 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+                >
+                  {t('btn_skip')}
+                </button>
+                <button
+                  onClick={() => setStep(5)} // Forward to Report
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                >
+                  {t('download_report')}
+                </button>
               </div>
-            </footer>
-            <VisitorCounter />
+            </div>
           </div>
-      );
+        )}
+
+        {/* Step 5: Report */}
+        {
+          (step as any) === 5 && gpa && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-lg p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('report_title')}</h2>
+                <div className="space-y-4 mb-6">
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <h3 className="font-semibold mb-2">{t('grade_status_title')}</h3>
+                    <p>{t('gno_caps') || 'GNO'}: <strong>{gpa.gno.toFixed(2)}</strong> | {t('ects_caps') || 'AKTS'}: <strong>{gpa.totalECTS}/240</strong></p>
+                  </div>
+                  {selectedArea && (
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <h3 className="font-semibold mb-2">{t('best_spec_title')}</h3>
+                      <p>
+                        {(() => {
+                          const analysis = analyzeSpecializations(records);
+                          const best = SPECIALIZATION_GROUPS.find(g => g.id === analysis.bestGroup);
+                          if (best) {
+                            const groupResult = analysis.groups.find(g => g.group.id === best.id);
+                            return (
+                              <>
+                                <strong>{best.name}</strong>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {t('progress_label')} {groupResult?.takenCount}/5 {t('courses_lower') || 'ders'}
+                                </p>
+                              </>
+                            )
+                          }
+                          return <span>{t('no_data_yet')}</span>
+                        })()}
+                      </p>
+                    </div>
+                  )}
+                  {eem413Check && (
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <h3 className="font-semibold mb-2">{t('eem413_title')}</h3>
+                      <p className={eem413Check.eligible ? 'text-green-600' : 'text-red-600'}>
+                        {eem413Check.eligible ? t('can_take_short') : t('cannot_take_short')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  <button
+                    onClick={() => {
+                      const passedCodes = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
+                      const simResult = simulationRecords.length > 0 ? calculateGPA(simulationRecords) : null;
+
+                      generateAcademicReport({
+                        studentName: 'Öğrenci',
+                        studentId: '123456789',
+                        department: 'Elektrik-Elektronik Mühendisliği',
+                        gpa: gpa,
+                        failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
+                        allRecords: records,
+                        simulationGpa: simResult,
+                        simulationRecords: simulationRecords.length > 0 ? simulationRecords : undefined
+                      });
+                    }}
+                    className="w-full flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-lg transform hover:scale-[1.02]"
+                  >
+                    <Download size={24} className="mr-2" />
+                    <span className="font-bold text-lg">{t('download_pdf_report')}</span>
+                  </button>
+                  <p className="text-center text-sm text-gray-500 mt-4">
+                    {t('report_footer_info')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <button
+                  onClick={() => setStep(4)} // Back to Schedule Planning
+                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  {t('btn_back')}
+                </button>
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-6 py-2 border border-indigo-600 text-indigo-600 rounded-lg hover:bg-indigo-50"
+                >
+                  {t('btn_new_analysis')}
+                </button>
+              </div>
+            </div>
+          )
+        }
+      </div>
+
+      <footer className="bg-white border-t mt-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <p className="text-center text-gray-600 text-sm font-medium">
+            <span className="md:hidden">{t('footer_title_mobile')}</span>
+            <span className="hidden md:block">{t('footer_title_desktop')}</span>
+          </p>
+
+          <div className="flex flex-col items-center gap-3 mt-4">
+            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100 shadow-sm">
+              <ShieldCheck size={16} />
+              <span className="font-medium">{t('footer_security')}</span>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <span>{t('footer_author')}</span>
+              <span className="text-gray-300">|</span>
+              <a href="https://github.com/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
+                <Github size={14} />
+                <span>{t('footer_opensource')}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
+      <VisitorCounter />
+    </div>
+  );
 }
