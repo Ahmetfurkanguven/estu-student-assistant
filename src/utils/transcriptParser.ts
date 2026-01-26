@@ -1,5 +1,7 @@
 import type { StudentRecord } from '../types';
 import { GRADE_SYSTEM } from '../data/rules';
+// @ts-ignore
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 /**
  * Gelişmiş transkript parsırı. Her satırı okuyarak ders kodu, isim, kredi, AKTS ve
@@ -12,7 +14,7 @@ export function parseTranscriptText(text: string): StudentRecord[] {
     let currentSemester = '';
 
     for (const line of lines) {
-        console.log('PARSER V2.1: Line:', line.substring(0, 20) + '...'); // Debug log
+        // console.log('PARSER V2.1: Line:', line.substring(0, 20) + '...'); // Debug log removed to reduce noise
         const trimmedLine = line.trim();
         // Dönem başlığı kontrolü
         if (/\d{4}-\d{4}\s+(GÜZ|BAHAR|YAZ)/i.test(trimmedLine)) {
@@ -43,11 +45,6 @@ export function parseTranscriptText(text: string): StudentRecord[] {
                 countInGPA = false;
             }
 
-            // DEBUG LOG FOR ANALYSIS
-            if (!countInGPA || code === 'TTTT02' || code === 'MFALM102') {
-                console.log(`[PARSER DEBUG] ${code}: Status=${status}, Rest='${rest}', HasReplacement=${hasReplacement}, CountInGPA=${countInGPA}`);
-            }
-
             // Also exclude 'T' (Transfer) or other non-calculated statuses if necessary, 
             // but for now focusing on the user's "Yerine" request.
 
@@ -66,28 +63,35 @@ export function parseTranscriptText(text: string): StudentRecord[] {
                 countInGPA: countInGPA
             });
         } else {
-            // Fallback for older format or different columns if necessary?
-            // Attempting original regex if the new one fails might be safe, but let's stick to the new one first
-            // as provided images show a consistent format.
+            // Fallback for older format
+            // Example: BİM122   Discrete Computational Structures (...)   5.0   CD   8.50   Z
+            // Looks like: Code Name ECTS Grade Points Status
+            // Old Regex expected: Code Name Credits ECTS Grade ?? The comments in old code were inconsistent with regex.
+            // Let's rely on the one that was in the file before my edits if it exists, otherwise use a generic one.
 
-            // Trying the old regex just in case, but adapting it to the StudentRecord structure
-            const oldMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
-            if (oldMatch && currentSemester) { // Ensure semester is set for old matches too
-                const [, code, name, credits, ects, gradeLetter] = oldMatch;
+            // Based on previous view:
+            // const oldMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
+
+            // Adapting a robust fallback:
+            const fallbackMatch = trimmedLine.match(/^([A-ZİĞÜŞÇÖ0-9]{2,})\s+(.+?)\s+(\d+(?:\.\d+)?)\s+([A-Z]{2})/);
+            if (fallbackMatch && currentSemester) {
+                const [, code, name, creditsStr, gradeLetter] = fallbackMatch;
+                const creds = parseFloat(creditsStr);
                 const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
+
                 records.push({
                     id: `${code}-${currentSemester}`,
                     courseCode: code,
                     courseName: name.trim(),
                     semester: currentSemester,
-                    credits: parseInt(credits),
-                    ects: parseFloat(ects),
+                    credits: creds,
+                    ects: creds, // Assuming AKTS if only one number
                     grade: {
                         letter: gradeLetter,
                         coefficient: gradeInfo.coefficient,
                         passed: gradeInfo.passed
                     },
-                    countInGPA: true // Default to true for old format
+                    countInGPA: true
                 });
             }
         }
@@ -102,12 +106,8 @@ export function parseTranscriptText(text: string): StudentRecord[] {
 export async function extractTextFromPDF(file: File): Promise<string> {
     try {
         const pdfjs = await import('pdfjs-dist');
-        // PDF.js worker ayarlaması - Vite compatible way
-        // @ts-ignore
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-            'pdfjs-dist/build/pdf.worker.min.mjs',
-            import.meta.url
-        ).href;
+        // PDF.js worker ayarlaması
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
