@@ -8,6 +8,8 @@ import { VisitorCounter } from './components/VisitorCounter';
 import { generateCourseProposal, ProposedCourse } from './utils/courseSelectionRules';
 import { detectScheduleConflicts, parseScheduleFromItems } from './utils/scheduleUtils';
 import { generateAcademicReport } from './utils/reportGenerator';
+import { parseTranscriptText, readTranscriptFile } from './utils/transcriptParser';
+import { calculateGPA } from './utils/gpaCalculator';
 
 interface Course {
   code: string;
@@ -202,85 +204,7 @@ const SAMPLE_SCHEDULES: ScheduleOffering[] = [
  * harf notu bilgilerini ayıklar. Dönem başlıklarını (YYYY-YYYY GÜZ/BAHAR) de
  * tespit eder ve kayıtları buna göre etiketler.
  */
-function parseTranscriptAdvanced(text: string): StudentRecord[] {
-  const records: StudentRecord[] = [];
-  const lines = text.split('\n');
-  let currentSemester = '';
 
-  for (const line of lines) {
-    // Dönem başlığı kontrolü - çeşitli formatlar:
-    // 1. "2022-2023 Güz Dönemi" veya "2022-2023 Yaz Okulu"
-    // 2. "2023-2024 Transfer Dersler (Gazi Üniversitesi)" - DGS öğrencileri için
-    // 3. "2022-2023 Bahar Dönemi"
-
-    if (/\d{4}-\d{4}\s+(Güz|Bahar|Yaz|GÜZ|BAHAR|YAZ)/i.test(line) && /(Dönem|Okulu)/i.test(line)) {
-      currentSemester = line.trim();
-      console.log('Dönem bulundu:', currentSemester);
-      continue;
-    }
-
-    // Transfer dersler formatı - DGS ile gelenler için
-    if (/\d{4}-\d{4}\s+Transfer\s+Dersler/i.test(line)) {
-      currentSemester = line.trim();
-      console.log('Transfer dönemi bulundu:', currentSemester);
-      continue;
-    }
-
-    // Ders satırı kontrolü için PDF formatı:
-    // Kodu   Ders Adı   AKTS Kredisi   Not   Kredi*Not   Statü
-    // BİM122   Discrete Computational Structures (...)   5.0   CD   8.50   Z
-
-    // Önce ders kodunu ara (satır başında)
-    const codeMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+/);
-    if (codeMatch && currentSemester) {
-      const code = codeMatch[1];
-
-      // Satırın geri kalanını parçalara ayır (birden fazla boşluk veya tab ile)
-      const parts = line.split(/\s{2,}|\t+/).filter(p => p.trim());
-
-      if (parts.length >= 4) {
-        // parts[0] = Kod
-        // parts[1] = Ders Adı
-        // parts[2] = AKTS Kredisi (sayı)
-        // parts[3] = Not (harf)
-        // parts[4] = Kredi*Not (sayı - atlanabilir)
-        // parts[5] = Statü (Z veya S)
-
-        const courseName = parts[1];
-        let aktsStr = parts[2];
-        const gradeStr = parts[3];
-        const status = parts.length >= 6 ? parts[5] : 'Z'; // Son kolon statü (sadece bilgi amaçlı)
-
-        // AKTS ve not bilgisini parse et
-        // Transfer derslerde format "D 2.0" olabilir, "D" harfini temizle
-        aktsStr = aktsStr.replace(/^[A-Za-z]\s*/, '').trim();
-        const akts = parseFloat(aktsStr);
-        const gradeLetter = gradeStr.toUpperCase();
-
-        // Not sisteminde varsa devam et
-        const gradeInfo = GRADE_SYSTEM[gradeLetter];
-        if (gradeInfo && !isNaN(akts)) {
-          // Tüm dersler GNO'ya katılır (sadece YT hariç)
-          records.push({
-            id: `${code}-${currentSemester}`,
-            courseCode: code,
-            courseName: courseName.trim(),
-            semester: currentSemester,
-            credits: akts, // AKTS değerini olduğu gibi kullan (5.0, 7.5 vs)
-            ects: akts,
-            grade: {
-              letter: gradeLetter,
-              coefficient: gradeInfo.coefficient,
-              passed: gradeInfo.passed
-            }
-          });
-          console.log(`Ders eklendi: ${code} - ${gradeLetter} - ${akts} Kredi - Statü: ${status}`);
-        }
-      }
-    }
-  }
-  return records;
-}
 
 /**
  * İntibak (kod değişikliği) uygulanmış kayıtları döndürür. Eğer kayıt eski bir koda
@@ -304,87 +228,7 @@ function applyIntibak(records: StudentRecord[]): StudentRecord[] {
  * GPA hesaplaması. Kredi ağırlıklı not ortalamasını hesaplar. Yeterli (YT) dersler
  * ortalamaya katılmaz. En son alınan dersin notu geçerli sayılır.
  */
-// Helper function for semester comparison
-function compareSemesters(sem1: string, sem2: string): number {
-  if (sem1 === 'Simülasyon') return 1;
-  if (sem2 === 'Simülasyon') return -1;
 
-  const match1 = sem1.match(/(\d{4})-(\d{4})\s+(Güz|Bahar|Yaz)/i);
-  const match2 = sem2.match(/(\d{4})-(\d{4})\s+(Güz|Bahar|Yaz)/i);
-
-  if (!match1 || !match2) return sem1.localeCompare(sem2);
-
-  const year1 = parseInt(match1[1]);
-  const year2 = parseInt(match2[1]);
-
-  if (year1 !== year2) return year1 - year2;
-
-  const termOrder: Record<string, number> = { 'güz': 1, 'bahar': 2, 'yaz': 3 };
-  const term1 = termOrder[match1[3].toLowerCase()] || 0;
-  const term2 = termOrder[match2[3].toLowerCase()] || 0;
-
-  return term1 - term2;
-}
-
-/**
- * GPA hesaplaması. Kredi ağırlıklı not ortalamasını hesaplar.
- */
-function calculateGPA(records: StudentRecord[]): GPAResult {
-  // Aynı dersi birden fazla aldıysa en son alınanı tutmak için Map kullanılır
-  const latestRecords = new Map<string, StudentRecord>();
-  for (const record of records) {
-    const code = record.courseCode.trim(); // Boşlukları temizle
-    const existing = latestRecords.get(code);
-    if (!existing || compareSemesters(record.semester, existing.semester) > 0) {
-      latestRecords.set(code, record);
-    }
-  }
-
-  let totalWeightedGrade = 0;
-  let totalCredits = 0; // GNO paydası
-  let passedCredits = 0;
-  let totalECTS = 0;
-  let totalAttempted = 0; // Tüm alınan dersler (GNO'ya girmese bile)
-  const usedCourses: StudentRecord[] = [];
-
-  for (const record of latestRecords.values()) {
-    // Toplam denenen kredi (YT/YZ dahil tüm dersler)
-    totalAttempted += record.credits;
-
-    // Sadece YT notlu dersler GNO'ya katılmaz
-    if (record.grade.letter !== 'YT') {
-      // Okul sistemi her dersin (Kredi * Not) puanını 2 basamağa yuvarlayıp topluyor
-      const rawPoints = record.grade.coefficient * record.credits;
-      const weighted = Math.round(rawPoints * 100) / 100;
-
-      totalWeightedGrade += weighted;
-      totalCredits += record.credits;
-      usedCourses.push(record);
-    }
-    totalECTS += record.ects;
-    if (record.grade.passed) {
-      passedCredits += record.credits;
-    }
-  }
-
-  // Dersleri dönem sıralı gösterelim
-  usedCourses.sort((a, b) => {
-    const semCheck = compareSemesters(a.semester, b.semester);
-    if (semCheck !== 0) return semCheck;
-    return a.courseCode.localeCompare(b.courseCode);
-  });
-
-  const gno = totalCredits > 0 ? totalWeightedGrade / totalCredits : 0;
-  return {
-    gno: Math.round(gno * 100) / 100,
-    dno: gno,
-    totalCredits,
-    passedCredits,
-    totalECTS,
-    totalAttempted,
-    usedCourses
-  };
-}
 
 /**
  * Bir ders için önkoşullar sağlanmış mı kontrol eder. Önkoşullar listesi ALL_COURSES
@@ -846,73 +690,13 @@ export default function App() {
     console.log('Dosya yüklendi:', file.name, 'Type:', file.type, 'Size:', file.size);
 
     try {
-      // PDF veya TXT dosyasını oku
-      let text: string;
-      if (file.type === 'application/pdf') {
-        console.log('PDF dosyası algılandı, pdfjs-dist yükleniyor...');
-        // PDF.js ile PDF'ten metin çıkar
-        const pdfjs = await import('pdfjs-dist');
-
-        // Worker'ı npm paketinden kullan - Vite bunu otomatik handle eder
-        // @ts-ignore - Vite özel import syntaxı
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url
-        ).href;
-        console.log('PDF okunuyor...');
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-
-        console.log('PDF sayfa sayısı:', pdf.numPages);
-        text = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-
-          // PDF'den metni daha iyi yapılandırmak için satır sonlarını koru
-          let lastY = -1;
-          const pageLines: string[] = [];
-          let currentLine = '';
-
-          textContent.items.forEach((item: any) => {
-            // Y pozisyonu değiştiyse yeni satır
-            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-              if (currentLine.trim()) {
-                pageLines.push(currentLine.trim());
-              }
-              currentLine = '';
-            }
-            currentLine += item.str + ' ';
-            lastY = item.transform[5];
-          });
-
-          // Son satırı ekle
-          if (currentLine.trim()) {
-            pageLines.push(currentLine.trim());
-          }
-
-          text += pageLines.join('\n') + '\n';
-        }
-        console.log('PDF metin çıkarıldı, uzunluk:', text.length);
-        console.log('İlk 500 karakter:', text.substring(0, 500));
-        console.log('=== TAM METİN ===');
-        console.log(text);
-        console.log('=== TAM METİN SONU ===');
-      } else {
-        console.log('TXT dosyası olarak okunuyor...');
-        // TXT dosyası - FileReader kullan
-        text = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (event) => resolve(event.target?.result as string);
-          reader.onerror = () => reject(new Error('Dosya okunamadı'));
-          reader.readAsText(file);
-        });
-        console.log('TXT dosyası okundu, uzunluk:', text.length);
-      }
+      console.log('Dosya okunuyor...');
+      const text = await readTranscriptFile(file);
+      setTranscriptText(text);
 
       console.log('Metin parse ediliyor...');
-      setTranscriptText(text);
-      let parsed = parseTranscriptAdvanced(text);
+      // Use imported parser
+      let parsed = parseTranscriptText(text);
       console.log('Parse edilen kayıt sayısı:', parsed.length);
 
       if (parsed.length === 0) {
