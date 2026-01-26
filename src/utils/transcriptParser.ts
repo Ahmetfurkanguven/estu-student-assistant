@@ -12,6 +12,7 @@ export function parseTranscriptText(text: string): StudentRecord[] {
     let currentSemester = '';
 
     for (const line of lines) {
+        console.log('PARSER V2.1: Line:', line.substring(0, 20) + '...'); // Debug log
         const trimmedLine = line.trim();
         // Dönem başlığı kontrolü
         if (/\d{4}-\d{4}\s+(GÜZ|BAHAR|YAZ)/i.test(trimmedLine)) {
