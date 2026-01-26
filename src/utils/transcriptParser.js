@@ -18,6 +18,10 @@ export function parseTranscriptText(text) {
         const match = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
         if (match && currentSemester) {
             const [, code, name, credits, ects, gradeLetter] = match;
+            // ÖZEL KOD: MFALM102 ve TTTT02 derslerini yoksay
+            if (code === 'MFALM102' || code === 'TTTT02') {
+                continue;
+            }
             const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
             records.push({
                 id: `${code}-${currentSemester}`,
