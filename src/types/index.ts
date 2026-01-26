@@ -43,7 +43,6 @@ export interface GPAResult {
     totalCredits: number;
     passedCredits: number;
     totalECTS: number;
-    totalAttempted: number; // Toplam denenen kredi (tekrar edilenler dahil değil, sadece son kayıtlar)
     usedCourses: StudentRecord[]; // Hesaplamada kullanılan derslerin listesi
 }
 
