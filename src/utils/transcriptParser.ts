@@ -12,30 +12,78 @@ export function parseTranscriptText(text: string): StudentRecord[] {
     let currentSemester = '';
 
     for (const line of lines) {
+        const trimmedLine = line.trim();
         // Dönem başlığı kontrolü
-        if (/\d{4}-\d{4}\s+(GÜZ|BAHAR)/i.test(line)) {
-            currentSemester = line.trim();
+        if (/\d{4}-\d{4}\s+(GÜZ|BAHAR|YAZ)/i.test(trimmedLine)) {
+            currentSemester = trimmedLine;
             continue;
         }
 
-        // Ders satırı kontrolü: Kod + İsim + Kredi + AKTS + Not
-        const match = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
+        // Regex for the new format observed in images:
+        // CourseCode | CourseName | AKTS | Grade | Credits | Status | ReplacedBy...
+        // Example: MFALM102 Mühendislik Almancası II(Alm) 4.0 FF 0.00 S FİZ237(Tür)
+        const match = trimmedLine.match(/^([A-ZİĞÜŞÇÖ0-9]{2,})\s+(.+?)\s+(\d+(?:\.\d+)?)\s+([A-Z]{2})\s+(\d+(?:\.\d+)?)(?:\s+([A-Z]+))?(?:\s+(.*))?$/);
+
         if (match && currentSemester) {
-            const [, code, name, credits, ects, gradeLetter] = match;
+            const [, code, name, ectsStr, gradeLetter, pointsStr, status, rest] = match;
+
+            const ects = parseFloat(ectsStr);
+            // ESTU uses AKTS for GPA calculation based on the transcript columns (AKTS * Grade = Points)
+            const credits = ects;
             const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
+
+            // Determine if the course should be counted in GPA
+            // 1. If Status is 'S' (often means 'Saydırıldı' or 'Silindi' in this context of replacement)
+            // 2. If 'rest' contains a valid course code (indicating it was replaced by another course)
+            let countInGPA = true;
+            const hasReplacement = rest && /[A-ZİĞÜŞÇÖ]{2,}\d{3,}/.test(rest);
+
+            if (hasReplacement) {
+                countInGPA = false;
+            }
+
+            // Also exclude 'T' (Transfer) or other non-calculated statuses if necessary, 
+            // but for now focusing on the user's "Yerine" request.
+
             records.push({
                 id: `${code}-${currentSemester}`,
                 courseCode: code,
                 courseName: name.trim(),
                 semester: currentSemester,
-                credits: parseInt(credits),
-                ects: parseFloat(ects),
+                credits: credits,
+                ects: ects,
                 grade: {
                     letter: gradeLetter,
                     coefficient: gradeInfo.coefficient,
                     passed: gradeInfo.passed
-                }
+                },
+                countInGPA: countInGPA
             });
+        } else {
+            // Fallback for older format or different columns if necessary?
+            // Attempting original regex if the new one fails might be safe, but let's stick to the new one first
+            // as provided images show a consistent format.
+
+            // Trying the old regex just in case, but adapting it to the StudentRecord structure
+            const oldMatch = line.match(/^([A-ZİĞÜŞÇÖ]{2,}[A-ZİĞÜŞÇÖ0-9]{3,})\s+(.+?)\s+(\d+)\s+([\d.]+)\s+([A-Z]{2})$/);
+            if (oldMatch && currentSemester) { // Ensure semester is set for old matches too
+                const [, code, name, credits, ects, gradeLetter] = oldMatch;
+                const gradeInfo = GRADE_SYSTEM[gradeLetter] || { coefficient: 0, passed: false };
+                records.push({
+                    id: `${code}-${currentSemester}`,
+                    courseCode: code,
+                    courseName: name.trim(),
+                    semester: currentSemester,
+                    credits: parseInt(credits),
+                    ects: parseFloat(ects),
+                    grade: {
+                        letter: gradeLetter,
+                        coefficient: gradeInfo.coefficient,
+                        passed: gradeInfo.passed
+                    },
+                    countInGPA: true // Default to true for old format
+                });
+            }
         }
     }
     return records;

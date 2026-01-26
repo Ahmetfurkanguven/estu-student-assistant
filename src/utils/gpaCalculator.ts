@@ -54,7 +54,8 @@ export function calculateGPA(records: StudentRecord[]): GPAResult {
     const usedCourses: StudentRecord[] = [];
     for (const record of latestRecords.values()) {
         // Sadece YT notlu dersler GNO'ya katılmaz
-        if (record.grade.letter !== 'YT') {
+        // VE countInGPA false ise hesaplamaya dahil edilmez
+        if (record.grade.letter !== 'YT' && record.countInGPA !== false) {
             // Okul sistemi her dersin (Kredi * Not) puanını 2 basamağa yuvarlayıp topluyor
             const rawPoints = record.grade.coefficient * record.credits;
             const weighted = Math.round(rawPoints * 100) / 100;
