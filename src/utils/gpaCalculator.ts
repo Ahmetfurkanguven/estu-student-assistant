@@ -51,8 +51,11 @@ export function calculateGPA(records: StudentRecord[]): GPAResult {
     let totalCredits = 0;
     let passedCredits = 0;
     let totalECTS = 0;
+    let totalAttempted = 0; // Total credits attempted
     const usedCourses: StudentRecord[] = [];
     for (const record of latestRecords.values()) {
+        totalAttempted += record.credits;
+
         // Sadece YT notlu dersler GNO'ya katılmaz
         // VE countInGPA false ise hesaplamaya dahil edilmez
         if (record.grade.letter !== 'YT' && record.countInGPA !== false) {
@@ -89,6 +92,7 @@ export function calculateGPA(records: StudentRecord[]): GPAResult {
         totalCredits,
         passedCredits,
         totalECTS,
+        totalAttempted,
         usedCourses
     };
 }
