@@ -251,6 +251,27 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
         const gradeStr = parts[3];
         const status = parts.length >= 6 ? parts[5] : 'Z'; // Son kolon statü (sadece bilgi amaçlı)
 
+        // YERİNE DERS KONTROLÜ
+        // Eğer satırda 6. veya 7. indekste veri varsa ve bu veri bir ders kodu veya metin içeriyorsa,
+        // bu satır "yerine sayılan" bir derstir ve GNO hesabına katılmamalıdır (orijinal ders).
+        // Kullanıcı isteği: "Eğer yerine 1 ve yerine 2 sutunları doluysa o dersin ne olduğunu önemsememelisin."
+
+        // parts[6] -> Yerine-1 (Potansiyel)
+        // parts[7] -> Yerine-2 (Potansiyel)
+
+        const yerine1 = parts.length > 6 ? parts[6] : null;
+        const yerine2 = parts.length > 7 ? parts[7] : null;
+
+        // Z veya S değilse ve en az 3 karakterse (ders kodu varsayımı)
+        const isYerinePopulated = (val: string | null) => {
+          return val && val.length > 2 && val !== 'Z' && val !== 'S';
+        };
+
+        if (isYerinePopulated(yerine1) || isYerinePopulated(yerine2)) {
+          console.log(`[IGNORED] Yerine ders tespit edildi, satır atlanıyor: ${code}`);
+          continue;
+        }
+
         // AKTS ve not bilgisini parse et
         // Transfer derslerde format "D 2.0" olabilir, "D" harfini temizle
         aktsStr = aktsStr.replace(/^[A-Za-z]\s*/, '').trim();
