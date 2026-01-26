@@ -220,10 +220,10 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
       continue;
     }
 
-    // Transfer dersler formatı - DGS ile gelenler için
-    if (/\d{4}-\d{4}\s+Transfer\s+Dersler/i.test(line)) {
+    // Transfer/Erasmus dersler formatı
+    if (/\d{4}-\d{4}\s+(Transfer|Erasmus|Değişim|DGS|Yatay)/i.test(line)) {
       currentSemester = line.trim();
-      console.log('Transfer dönemi bulundu:', currentSemester);
+      console.log('Özel transfer/değişim dönemi bulundu:', currentSemester);
       continue;
     }
 
@@ -253,22 +253,28 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
         const status = parts.length >= 6 ? parts[5] : 'Z'; // Son kolon statü (sadece bilgi amaçlı)
 
         // YERİNE DERS KONTROLÜ
-        // Eğer satırda 6. veya 7. indekste veri varsa ve bu veri bir ders kodu veya metin içeriyorsa,
-        // bu satır "yerine sayılan" bir derstir ve GNO hesabına katılmamalıdır (orijinal ders).
-        // Kullanıcı isteği: "Eğer yerine 1 ve yerine 2 sutunları doluysa o dersin ne olduğunu önemsememelisin."
-
-        // parts[6] -> Yerine-1 (Potansiyel)
-        // parts[7] -> Yerine-2 (Potansiyel)
-
         const yerine1 = parts.length > 6 ? parts[6] : null;
         const yerine2 = parts.length > 7 ? parts[7] : null;
 
-        // Z veya S değilse ve en az 3 karakterse (ders kodu varsayımı)
         const isYerinePopulated = (val: string | null) => {
           return val && val.length > 2 && val !== 'Z' && val !== 'S';
         };
 
-        if (isYerinePopulated(yerine1) || isYerinePopulated(yerine2)) {
+        const isSpecialTransfer = /Transfer|Erasmus|Değişim|DGS|Yatay/i.test(currentSemester);
+        let finalCode = code;
+
+        if (isSpecialTransfer) {
+          // Transfer derslerde Karşılık-1 veya Karşılık-2 kolonunda yerel kod olabilir
+          const candidates = [yerine1, yerine2].filter(isYerinePopulated);
+          if (candidates.length > 0) {
+            // "TÜR125(Tür)" -> "TÜR125" temizliği
+            const clean = candidates[0]!.replace(/\(.*\)/, '').trim();
+            if (clean.length >= 3) {
+              finalCode = clean;
+              console.log(`Transfer eşleşmesi: ${code} -> ${finalCode}`);
+            }
+          }
+        } else if (isYerinePopulated(yerine1) || isYerinePopulated(yerine2)) {
           console.log(`[IGNORED] Yerine ders tespit edildi, satır atlanıyor: ${code}`);
           continue;
         }
@@ -282,13 +288,12 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
         // Not sisteminde varsa devam et
         const gradeInfo = GRADE_SYSTEM[gradeLetter];
         if (gradeInfo && !isNaN(akts)) {
-          // Tüm dersler GNO'ya katılır (sadece YT hariç)
           records.push({
-            id: `${code}-${currentSemester}`,
-            courseCode: code,
+            id: `${finalCode}-${currentSemester}-${Math.random().toString(36).substr(2, 5)}`,
+            courseCode: finalCode,
             courseName: courseName.trim(),
             semester: currentSemester,
-            credits: akts, // AKTS değerini olduğu gibi kullan (5.0, 7.5 vs)
+            credits: akts,
             ects: akts,
             grade: {
               letter: gradeLetter,
@@ -296,7 +301,7 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
               passed: gradeInfo.passed
             }
           });
-          console.log(`Ders eklendi: ${code} - ${gradeLetter} - ${akts} Kredi - Statü: ${status}`);
+          console.log(`Ders eklendi: ${finalCode} (Ori: ${code}) - ${gradeLetter} - ${akts} Kredi`);
         }
       }
     }
