@@ -924,6 +924,14 @@ export default function App() {
         console.log('İntibak uygulanıyor...');
         parsed = applyIntibak(parsed);
       }
+
+      // NUCLEAR OPTION: Kesin Filtreleme
+      // Bu dersler ne olursa olsun listeden silinmeli
+      parsed = parsed.filter(r =>
+        r.courseCode !== 'MFALM102' &&
+        r.courseCode !== 'TTTT02'
+      );
+
       setRecords(parsed);
       setSimulationRecords([]); // Clear old simulation data when new file is loaded
       setStep(2);
