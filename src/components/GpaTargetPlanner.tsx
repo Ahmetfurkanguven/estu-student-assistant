@@ -1,0 +1,210 @@
+import React, { useMemo, useState } from 'react';
+import { Target, TrendingUp, AlertTriangle } from 'lucide-react';
+import type { TranscriptRecord } from '../utils/transcriptParser';
+import type { Course } from '../types';
+import {
+    computeBase, buildCandidates, projectCandidate, buildTargetPlan,
+    COEFFICIENT_GRADES, type TargetCandidate
+} from '../utils/gpaTarget';
+
+interface Props {
+    records: TranscriptRecord[];
+    /** Bölüm profilinden, henüz alınmamış dersler (yeni ders seçeneği için). */
+    newCourseOptions?: Course[];
+}
+
+/**
+ * "Hedef ortalamaya nasıl ulaşırım?" ekranı.
+ *
+ * İki soruyu ayrı ayrı yanıtlar:
+ *   1. Hedefe ulaşmak için hangi dersleri tekrar almalıyım ve her birinden
+ *      en az hangi notu almalıyım?  → plan
+ *   2. Şu dersi bu dönem alırsam hangi not bana ne kazandırır? → not tablosu
+ */
+export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
+    const [target, setTarget] = useState(2.5);
+    const [includeNew, setIncludeNew] = useState(false);
+    const [expanded, setExpanded] = useState<string | null>(null);
+
+    const base = useMemo(() => computeBase(records), [records]);
+    const candidates = useMemo(
+        () => buildCandidates(records, { newCourses: includeNew ? newCourseOptions : [] }),
+        [records, includeNew, newCourseOptions]
+    );
+    const plan = useMemo(
+        () => buildTargetPlan(records, target, candidates),
+        [records, target, candidates]
+    );
+
+    if (!records.length) return null;
+
+    return (
+        <div className="bg-white rounded-lg shadow-md p-4">
+            <h3 className="flex items-center gap-2 font-semibold text-gray-800 mb-1">
+                <Target className="w-5 h-5" />
+                Ortalama hedefi
+            </h3>
+            <p className="text-xs text-gray-500 mb-4">
+                Tekrar edilen derste eski not tamamen düşer, yeni not yerine geçer (Madde 19/3).
+                AA veya YT alınmış dersler tekrar edilemez (Madde 8/5).
+            </p>
+
+            <div className="flex flex-wrap items-end gap-4 mb-4">
+                <label className="text-sm">
+                    <span className="block text-gray-600 mb-1">Hedef GNO</span>
+                    <input
+                        type="number" min={0} max={4} step={0.05} value={target}
+                        onChange={e => setTarget(Math.min(4, Math.max(0, Number(e.target.value) || 0)))}
+                        className="w-28 border border-gray-300 rounded px-2 py-1 font-mono"
+                    />
+                </label>
+                <div className="text-sm">
+                    <span className="block text-gray-600 mb-1">Mevcut</span>
+                    <span className="font-mono text-lg font-semibold">{plan.currentGno.toFixed(2)}</span>
+                </div>
+                <div className="text-sm">
+                    <span className="block text-gray-600 mb-1">Plan sonunda</span>
+                    <span className={`font-mono text-lg font-semibold ${plan.achievable ? 'text-green-700' : 'text-red-700'}`}>
+                        {plan.projectedGno.toFixed(2)}
+                    </span>
+                </div>
+                {newCourseOptions.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                        <input type="checkbox" checked={includeNew} onChange={e => setIncludeNew(e.target.checked)} />
+                        Yeni ders almayı da hesaba kat
+                    </label>
+                )}
+            </div>
+
+            {!plan.achievable && (
+                <div className="flex gap-2 bg-amber-50 border border-amber-200 rounded p-3 text-sm text-amber-900 mb-4">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-medium">Bu hedef mevcut derslerle erişilemiyor.</p>
+                        <p>Ulaşılabilecek en yüksek GNO: <strong>{plan.maxPossibleGno.toFixed(2)}</strong> (tüm dersler AA).</p>
+                    </div>
+                </div>
+            )}
+
+            {plan.steps.length > 0 && (
+                <>
+                    <h4 className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                        <TrendingUp className="w-4 h-4" />
+                        En kısa yol — {plan.steps.length} ders
+                    </h4>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 text-gray-600">
+                                <tr>
+                                    <th className="text-left px-3 py-2">Ders</th>
+                                    <th className="text-center px-3 py-2">Şu an</th>
+                                    <th className="text-center px-3 py-2">En az almalısın</th>
+                                    <th className="text-right px-3 py-2">Sonra GNO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {plan.steps.map(step => (
+                                    <tr key={step.candidate.courseCode} className="border-t border-gray-100">
+                                        <td className="px-3 py-2">
+                                            <span className="font-mono">{step.candidate.courseCode}</span>
+                                            <span className="block text-xs text-gray-500">
+                                                {step.candidate.courseName} · {step.candidate.ects} AKTS
+                                                {step.candidate.kind === 'yeni' && ' · yeni ders'}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-center text-gray-500">
+                                            {step.candidate.currentGrade ?? '—'}
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                            <span className="inline-block px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">
+                                                {step.requiredGrade}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-right font-mono">{step.gnoAfter.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+
+            {plan.notes.length > 0 && (
+                <ul className="mt-3 text-xs text-gray-500 space-y-1">
+                    {plan.notes.map((n, i) => <li key={i}>• {n}</li>)}
+                </ul>
+            )}
+
+            <details className="mt-5">
+                <summary className="text-sm font-medium text-gray-700 cursor-pointer">
+                    Tek tek: hangi dersten hangi notu alırsam ne olur? ({candidates.length} ders)
+                </summary>
+                <div className="mt-3 space-y-2">
+                    {candidates.slice(0, 25).map(candidate => (
+                        <CandidateRow
+                            key={candidate.courseCode + candidate.kind}
+                            candidate={candidate}
+                            base={base}
+                            target={target}
+                            open={expanded === candidate.courseCode}
+                            onToggle={() => setExpanded(expanded === candidate.courseCode ? null : candidate.courseCode)}
+                        />
+                    ))}
+                </div>
+            </details>
+        </div>
+    );
+}
+
+function CandidateRow({
+    candidate, base, target, open, onToggle
+}: {
+    candidate: TargetCandidate;
+    base: ReturnType<typeof computeBase>;
+    target: number;
+    open: boolean;
+    onToggle: () => void;
+}) {
+    const projection = useMemo(() => projectCandidate(base, candidate, target), [base, candidate, target]);
+
+    return (
+        <div className="border border-gray-200 rounded">
+            <button type="button" onClick={onToggle} className="w-full flex items-center justify-between px-3 py-2 text-left text-sm">
+                <span>
+                    <span className="font-mono">{candidate.courseCode}</span>
+                    <span className="text-gray-500 ml-2">{candidate.courseName}</span>
+                </span>
+                <span className="text-xs text-gray-500 shrink-0 ml-3">
+                    {candidate.currentGrade ?? 'yeni'} · {candidate.ects} AKTS ·{' '}
+                    {projection.minimumSufficientGrade
+                        ? <span className="text-green-700 font-medium">tek başına {projection.minimumSufficientGrade} yeter</span>
+                        : <span className="text-gray-400">tek başına yetmez</span>}
+                </span>
+            </button>
+
+            {open && (
+                <div className="px-3 pb-3">
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-1.5">
+                        {projection.outcomes.map(o => (
+                            <div
+                                key={o.letter}
+                                className={`text-center rounded px-2 py-1.5 text-xs border ${
+                                    o.reachesTarget
+                                        ? 'bg-green-50 border-green-300 text-green-900'
+                                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                                }`}
+                            >
+                                <div className="font-semibold">{o.letter}</div>
+                                <div className="font-mono">{o.gno.toFixed(2)}</div>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400">
+                        Yeşil kutular {target.toFixed(2)} hedefini tek başına sağlayan notlardır.
+                        Toplam {COEFFICIENT_GRADES.length} harf notu (Madde 18/4).
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}

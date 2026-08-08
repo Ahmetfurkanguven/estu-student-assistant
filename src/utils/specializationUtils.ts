@@ -80,7 +80,7 @@ export function analyzeSpecializations(records: StudentRecord[]): {
     activeSeason: 'Güz' | 'Bahar';
 } {
     // 1. Identify passed courses
-    const passedCourses = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
+    const passedCourses = new Set(records.filter(r => r.grade.passed).flatMap(r => [r.courseCode, (r as any).curriculumCode].filter(Boolean)));
 
     // 2. Count Total Technical Electives (Taking from records that match any course in ANY group)
     // Note: We need to be careful not to double count if a course appears in multiple groups? 
@@ -91,7 +91,7 @@ export function analyzeSpecializations(records: StudentRecord[]): {
     const allSpecCodes = new Set<string>();
     SPECIALIZATION_GROUPS.forEach(g => g.courses.forEach(c => allSpecCodes.add(c.code)));
 
-    const takenElectives = records.filter(r => r.grade.passed && allSpecCodes.has(r.courseCode));
+    const takenElectives = records.filter(r => r.grade.passed && (allSpecCodes.has(r.courseCode) || allSpecCodes.has((r as any).curriculumCode)));
     // Ensure uniqueness by code
     const uniqueTakenElectives = new Set(takenElectives.map(r => r.courseCode));
     const totalTechnicalElectives = uniqueTakenElectives.size;

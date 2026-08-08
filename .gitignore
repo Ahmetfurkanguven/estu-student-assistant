@@ -134,3 +134,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# test derleme çıktısı
+.test-build/
+
+# tsc çıktısı kaynak ağacına sızmasın (Vite .js dosyasını .tsx yerine çözer)
+src/**/*.js

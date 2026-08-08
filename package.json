@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
+    "test": "esbuild tests/engine.test.ts --bundle --platform=node --format=esm --outfile=.test-build/engine.mjs --external:pdfjs-dist --log-level=warning && node .test-build/engine.mjs",
+    "test:schedule": "esbuild tests/schedule-corpus.test.ts --bundle --platform=node --format=esm --outfile=.test-build/schedule.mjs --external:pdfjs-dist --log-level=warning && node .test-build/schedule.mjs",
+    "build:profiles": "node scripts/build-department-profile.mjs",
+    "deploy": "npm run build && gh-pages -d dist",
+    "test:transcript": "esbuild tests/transcript-corpus.test.ts --bundle --platform=node --format=esm --outfile=.test-build/transcript.mjs --external:pdfjs-dist --log-level=warning && node .test-build/transcript.mjs"
   },
   "dependencies": {
     "jspdf": "^4.0.0",

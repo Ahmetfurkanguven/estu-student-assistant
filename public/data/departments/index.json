@@ -1,0 +1,12 @@
+{
+  "departments": [
+    {
+      "code": "EEM",
+      "name": "Elektrik-Elektronik Mühendisliği",
+      "nameEn": "Electrical and Electronics Engineering",
+      "faculty": "Mühendislik Fakültesi",
+      "degree": "lisans",
+      "file": "EEM.json"
+    }
+  ]
+}

@@ -6,9 +6,22 @@ import { VisitorCounter } from './components/VisitorCounter';
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
-import { generateCourseProposal, ProposedCourse } from './utils/courseSelectionRules';
-import { detectScheduleConflicts, parseScheduleFromItems } from './utils/scheduleUtils';
+import { ProposedCourse, ProposalResult } from './utils/courseSelectionRules';
+import { detectScheduleConflicts } from './utils/scheduleUtils';
 import { generateAcademicReport } from './utils/reportGenerator';
+
+// --- Yönetmelik motoru (ESTÜ ÖL/L Eğitim-Öğretim ve Sınav Yönetmeliği, RG 9/9/2025) ---
+import type { DepartmentProfile } from './types/department';
+import { analyzeTranscript, buildProposal, type AcademicAnalysis } from './engine/analyze';
+import { readTranscriptFile } from './utils/transcriptParser';
+import type { TermType } from './utils/repeatRules';
+import { setActiveProfile } from './data/activeProfile';
+import { DepartmentSelector } from './components/DepartmentSelector';
+import { TranscriptDiagnostics } from './components/TranscriptDiagnostics';
+import { AcademicStandingPanel } from './components/AcademicStandingPanel';
+import { CourseProposalPanel } from './components/CourseProposalPanel';
+import { GpaTargetPlanner } from './components/GpaTargetPlanner';
+import { ScheduleBuilder } from './components/ScheduleBuilder';
 
 interface Course {
   code: string;
@@ -96,73 +109,10 @@ const GRADE_SYSTEM: Record<string, { coefficient: number; passed: boolean }> = {
   DZ: { coefficient: 0.0, passed: false }
 };
 
-// Ders listesi. Bu örnek kodda veriler hard‑coded olarak tanımlandı. Gerçek uygulamada
-// bu dosyayı public/data/courses.json gibi bir kaynaktan da okuyabilirsiniz.
-const ALL_COURSES: Course[] = [
-  // 1. Yarıyıl
-  { code: 'MAT1011', name: 'Calculus I', credits: 6, ects: 7.5, type: 'zorunlu', semester: 1 },
-  { code: 'FİZ105', name: 'Physics I', credits: 4, ects: 6.0, type: 'zorunlu', semester: 1 },
-  { code: 'FİZ107', name: 'Physics Laboratory I', credits: 2, ects: 1.5, type: 'zorunlu', semester: 1 },
-  { code: 'KİM1005', name: 'General Chemistry', credits: 4, ects: 6.0, type: 'zorunlu', semester: 1 },
-  { code: 'BİM122', name: 'Discrete Computational Structures', credits: 3, ects: 5.0, type: 'zorunlu', semester: 1 },
-  { code: 'TÜR125', name: 'Türk Dili I', credits: 2, ects: 2.0, type: 'zorunlu', semester: 1 },
-
-  // 2. Yarıyıl
-  { code: 'MAT1012', name: 'Calculus II', credits: 6, ects: 7.5, type: 'zorunlu', semester: 2, prerequisites: ['MAT1011'] },
-  { code: 'FİZ106', name: 'Physics II', credits: 4, ects: 6.0, type: 'zorunlu', semester: 2, prerequisites: ['FİZ105'] },
-  { code: 'FİZ108', name: 'Physics Laboratory II', credits: 2, ects: 1.5, type: 'zorunlu', semester: 2, prerequisites: ['FİZ107'] },
-  { code: 'MAT2021', name: 'Linear Algebra', credits: 4, ects: 4.5, type: 'zorunlu', semester: 2 },
-  { code: 'EEM102', name: 'Introduction to Electrical Engineering', credits: 6, ects: 7.5, type: 'zorunlu', semester: 2 },
-  { code: 'EEM104', name: 'Professional Aspects of EEE', credits: 2, ects: 3.0, type: 'zorunlu', semester: 2 },
-  { code: 'TÜR126', name: 'Türk Dili II', credits: 2, ects: 2.0, type: 'zorunlu', semester: 2 },
-
-  // 3. Yarıyıl
-  { code: 'MAT2011', name: 'Differential Equations', credits: 4, ects: 4.5, type: 'zorunlu', semester: 3, prerequisites: ['MAT1012'] },
-  { code: 'MAT2093', name: 'Engineering Mathematics', credits: 4, ects: 6.0, type: 'zorunlu', semester: 3 },
-  { code: 'EEM209', name: 'Circuit Analysis I', credits: 5, ects: 7.5, type: 'zorunlu', semester: 3, prerequisites: ['EEM102'] },
-  { code: 'EEM206', name: 'Electrical Circuits Laboratory', credits: 3, ects: 3.0, type: 'zorunlu', semester: 3, prerequisites: ['EEM102'] },
-  { code: 'BİL200', name: 'Computer Programming', credits: 4, ects: 6.0, type: 'zorunlu', semester: 3 },
-  { code: 'TAR165', name: 'Atatürk İlkeleri ve İnkılap Tarihi I', credits: 2, ects: 2.0, type: 'zorunlu', semester: 3 },
-
-  // 4. Yarıyıl
-  { code: 'EEM208', name: 'Electromagnetic Fields and Waves', credits: 4, ects: 6.0, type: 'zorunlu', semester: 4, prerequisites: ['MAT2093'] },
-  { code: 'EEM232', name: 'Digital Systems I', credits: 4, ects: 6.0, type: 'zorunlu', semester: 4 },
-  { code: 'EEM238', name: 'Digital Systems Laboratory', credits: 2, ects: 2.0, type: 'zorunlu', semester: 4 },
-  { code: 'İST2044', name: 'Engineering Probability', credits: 4, ects: 5.0, type: 'zorunlu', semester: 4 },
-  { code: 'EEM210', name: 'Fundamentals of Semiconductor Devices', credits: 3, ects: 5.0, type: 'zorunlu', semester: 4 },
-  { code: 'TAR166', name: 'Atatürk İlkeleri ve İnkılap Tarihi II', credits: 2, ects: 2.0, type: 'zorunlu', semester: 4 },
-
-  // 5. Yarıyıl
-  { code: 'EEM301', name: 'Signals and Systems', credits: 4, ects: 6.0, type: 'zorunlu', semester: 5, prerequisites: ['MAT2011'] },
-  { code: 'EEM311', name: 'Principles of Energy Conversion', credits: 5, ects: 6.0, type: 'zorunlu', semester: 5, prerequisites: ['EEM208'] },
-  { code: 'EEM321', name: 'Electronics I', credits: 3, ects: 5.0, type: 'zorunlu', semester: 5, prerequisites: ['EEM210'] },
-  { code: 'EEM328', name: 'Electronics Laboratory', credits: 3, ects: 3.0, type: 'zorunlu', semester: 5 },
-  { code: 'İKT151', name: 'Economics', credits: 3, ects: 3.0, type: 'zorunlu', semester: 5 },
-
-  // 6. Yarıyıl
-  { code: 'EEM308', name: 'Introduction to Communications', credits: 5, ects: 7.0, type: 'zorunlu', semester: 6, prerequisites: ['EEM301'] },
-  { code: 'EEM336', name: 'Microprocessors I', credits: 5, ects: 7.0, type: 'zorunlu', semester: 6 },
-  { code: 'EEM342', name: 'Fundamentals of Control Systems', credits: 5, ects: 7.0, type: 'zorunlu', semester: 6, prerequisites: ['EEM301'] },
-
-  // 7. Yarıyıl
-  { code: 'EEM413', name: 'EEE Design Project I', credits: 6, ects: 4.5, type: 'zorunlu', semester: 7 },
-  { code: 'EEM415', name: 'Engineering Design and Research', credits: 2, ects: 3.0, type: 'zorunlu', semester: 7 },
-
-  // 8. Yarıyıl
-  { code: 'EEM414', name: 'EEE Design Project II', credits: 6, ects: 4.5, type: 'zorunlu', semester: 8, prerequisites: ['EEM413'] },
-
-  // Mesleki Seçmeli Örnekler
-  { code: 'EEM409', name: 'Random Signals', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM467', name: 'Digital Communications', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM477', name: 'Digital Signal Processing', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM471', name: 'Electrical Machinery I', credits: 4, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM473', name: 'Power Systems Analysis I', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM475', name: 'Power Electronics I', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM491', name: 'Linear Control Systems', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM480', name: 'Algorithms and Complexity', credits: 3, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM449', name: 'Embedded System Design', credits: 4, ects: 5.0, type: 'mesleki_secmeli' },
-  { code: 'EEM4503', name: 'Digital Systems Design with VHDL and FPGA', credits: 5, ects: 5.0, type: 'mesleki_secmeli' }
-];
+// Ders planı, intibak eşlemeleri, uzmanlaşma tanımları ve örnek program verisi
+// koda GÖMÜLÜ DEĞİLDİR. Seçilen bölümün public/data/departments/<KOD>.json
+// profilinden yüklenir. Bkz. utils/departmentRegistry.ts, data/activeProfile.ts
+import { getActiveCourses, getActiveIntibak } from './data/activeProfile';
 
 // Uzmanlaşma alanları. Her alan için gereken dersler ve minimum MS ders/AKTS bilgisi.
 import { analyzeSpecializations } from './utils/specializationUtils';
@@ -170,29 +120,7 @@ import { SPECIALIZATION_GROUPS } from './data/specializationGroups';
 
 
 
-// İntibak eşlemeleri. Eski ders kodları yenileriyle ilişkilendiriliyor.
-const INTIBAK_MAPPINGS: IntibakMapping[] = [
-  { oldCode: 'EMAT111', newCode: 'MAT1011', note: '2025-2026 akademik yılından itibaren kod değişti' },
-  { oldCode: 'EKİM105', newCode: 'KİM1005', note: '2025-2026 akademik yılından itibaren kod değişti' },
-  { oldCode: 'EMAT112', newCode: 'MAT1012', note: '2025-2026 akademik yılından itibaren kod değişti' },
-  { oldCode: 'EMAT221', newCode: 'MAT2021', note: '2025-2026 akademik yılından itibaren kod değişti' },
-  { oldCode: 'EMAT211', newCode: 'MAT2011', note: '2025-2026 akademik yılından itibaren kod değişti' },
-  { oldCode: 'MAT293', newCode: 'MAT2093', note: '2025-2026 akademik yılından itibaren kod ve adı değişti' },
-  { oldCode: 'İST244', newCode: 'İST2044', note: '2025-2026 akademik yılından itibaren haftalık ders saati değişti' },
-  { oldCode: 'EEM322', newCode: 'EEM4501', note: 'Electronics II → Analog Electronics' },
-  { oldCode: 'EEM334', newCode: 'EEM4503', note: 'Digital Systems II → Digital Systems Design with VHDL and FPGA' }
-];
 
-// Örnek ders programı verisi. Gerçek uygulamada pdf parser üzerinden okunabilir.
-const SAMPLE_SCHEDULES: ScheduleOffering[] = [
-  { courseCode: 'EEM336', section: 'All', day: 'Pazartesi', startTime: '09:00', endTime: '12:00', room: 'E5', type: 'lecture' },
-  { courseCode: 'EEM342', section: 'A', day: 'Pazartesi', startTime: '14:00', endTime: '16:00', room: 'Lab', type: 'lab' },
-  { courseCode: 'EEM308', section: 'A', day: 'Pazartesi', startTime: '14:00', endTime: '16:00', room: 'Lab', type: 'lab' },
-  { courseCode: 'İŞL101', section: 'All', day: 'Salı', startTime: '09:00', endTime: '12:00', room: 'E1', type: 'lecture' },
-  { courseCode: 'EEM308', section: 'All', day: 'Salı', startTime: '14:00', endTime: '17:00', room: 'E5', type: 'lecture' },
-  { courseCode: 'TAR165', section: 'All', day: 'Asenkron', startTime: '00:00', endTime: '00:00', type: 'lecture', async: true },
-  { courseCode: 'İSG401', section: 'All', day: 'Asenkron', startTime: '00:00', endTime: '00:00', type: 'lecture', async: true }
-];
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -315,7 +243,7 @@ function parseTranscriptAdvanced(text: string): StudentRecord[] {
  */
 function applyIntibak(records: StudentRecord[]): StudentRecord[] {
   return records.map(record => {
-    const mapping = INTIBAK_MAPPINGS.find(m => m.oldCode === record.courseCode);
+    const mapping = getActiveIntibak().find(m => m.oldCode === record.courseCode);
     if (mapping) {
       return {
         ...record,
@@ -414,11 +342,11 @@ function calculateGPA(records: StudentRecord[]): GPAResult {
 }
 
 /**
- * Bir ders için önkoşullar sağlanmış mı kontrol eder. Önkoşullar listesi ALL_COURSES
+ * Bir ders için önkoşullar sağlanmış mı kontrol eder. Önkoşullar listesi getActiveCourses()
  * içindeki course.prerequisites alanından alınır.
  */
 function checkPrerequisites(courseCode: string, completedCourses: Set<string>): { canTake: boolean; missing: string[] } {
-  const course = ALL_COURSES.find(c => c.code === courseCode);
+  const course = getActiveCourses().find(c => c.code === courseCode);
   if (!course || !course.prerequisites) {
     return { canTake: true, missing: [] };
   }
@@ -430,10 +358,10 @@ function checkPrerequisites(courseCode: string, completedCourses: Set<string>): 
 }
 
 /**
- * EEM413/414 alma uygunluğunu kontrol eder. GNO ≥ 2.00 ve (ilk 4 yarıyıl zorunlu
+ * Bitirme projesi derslerini alma uygunluğunu kontrol eder (Madde 8/4). GNO ≥ 2.00 ve (ilk 4 yarıyıl zorunlu
  * dersler tamamlanmış VEYA en az 180 AKTS) kriterlerini kullanır.
  */
-function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eligible: boolean; reasons: string[] } {
+function checkGraduationProjectEligibility(records: StudentRecord[], gpa: GPAResult): { eligible: boolean; reasons: string[] } {
   const reasons: string[] = [];
 
   if (gpa.gno < 2.0) {
@@ -441,7 +369,7 @@ function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eli
   }
 
   // KURAL: İlk 4 yarıyılın tüm zorunlu dersleri tamamlanmış olmalı VEYA 180 AKTS tamamlanmış olmalı.
-  const firstFourSemesterCourses = ALL_COURSES
+  const firstFourSemesterCourses = getActiveCourses()
     .filter(c => c.semester && c.semester <= 4 && c.type === 'zorunlu')
     .map(c => c.code);
 
@@ -454,7 +382,7 @@ function checkEEM413Eligibility(records: StudentRecord[], gpa: GPAResult): { eli
       let code = r.courseCode.trim().toUpperCase();
 
       // Zorla İntibak Kontrolü (State'te yapılmamışsa burada yap)
-      const mapping = INTIBAK_MAPPINGS.find(m => m.oldCode === code);
+      const mapping = getActiveIntibak().find(m => m.oldCode === code);
       if (mapping) {
         mappedDebug.push(`${code} -> ${mapping.newCode}`);
         code = mapping.newCode;
@@ -519,6 +447,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'analysis'>('upload');
   const [showAllRecords, setShowAllRecords] = useState(false); // For expandable course table
   const [departmentSchedule, setDepartmentSchedule] = useState<ScheduleOffering[]>([]); // Master Schedule
+
+  // --- Bölüm profili ve yönetmelik analizi ---
+  // Bölüme özgü hiçbir veri koda gömülü değil; hepsi seçilen profilden gelir.
+  const [departmentCode, setDepartmentCode] = useState<string | null>(null);
+  const [profile, setProfile] = useState<DepartmentProfile | null>(null);
+  const [academicAnalysis, setAcademicAnalysis] = useState<AcademicAnalysis | null>(null);
+  const [proposal, setProposal] = useState<ProposalResult | null>(null);
+  const [proposalTerm, setProposalTerm] = useState<TermType>('guz');
+  const [doubleMajor, setDoubleMajor] = useState(false);
 
   // Manuel ders ekleme state'leri
   const [showManualEntryForm, setShowManualEntryForm] = useState(false);
@@ -616,7 +553,7 @@ export default function App() {
 
   // Senaryo: Yeni ders ekle
   const addSimulationCourse = (courseCode: string, letter: string) => {
-    const course = ALL_COURSES.find(c => c.code === courseCode);
+    const course = getActiveCourses().find(c => c.code === courseCode);
     if (!course) return;
 
     const gradeInfo = GRADE_SYSTEM[letter];
@@ -806,22 +743,23 @@ export default function App() {
 
       console.log(`[PDF] Extracted ${allItems.length} text items from ${pdf.numPages} pages`);
 
-      // Use grid-based parser with coordinates
-      const { parseScheduleFromItems } = await import('./utils/scheduleUtils');
-      const parsed = parseScheduleFromItems(allItems);
+      // Gün/saat ızgarası koordinatlardan çözülür; bölüm profili ders/derslik
+      // ayrımını kesinleştirir (sabit ön ek listesi yok).
+      const { parseSchedulePdf } = await import('./utils/schedulePdfParser');
+      const { offerings, diagnostics } = parseSchedulePdf(allItems, {
+        knownCourseCodes: profile?.courses.map(c => c.code) ?? []
+      });
 
-      if (parsed.length > 0) {
-        setDepartmentSchedule(parsed);
-        // localStorage.setItem removed - data will not persist across refresh
-
-        // Show detailed success message
-        const dayStats: Record<string, number> = {};
-        parsed.forEach(p => { dayStats[p.day] = (dayStats[p.day] || 0) + 1; });
-        const dayInfo = Object.entries(dayStats).map(([d, c]) => `${d}: ${c}`).join(', ');
-
-        alert(`✅ ${parsed.length} ders/şube başarıyla okundu!\n\nGün dağılımı:\n${dayInfo}`);
+      if (offerings.length > 0) {
+        setDepartmentSchedule(offerings);
+        const summary = diagnostics.find(d => d.code === 'SUMMARY')?.message ?? `${offerings.length} kayıt okundu`;
+        alert(`✅ ${summary}`);
       } else {
-        alert('⚠️ Ders formatı algılanamadı. Konsolu (F12) kontrol edin.');
+        const why = diagnostics
+          .filter(d => d.level !== 'info')
+          .map(d => '• ' + d.message)
+          .join('\n');
+        alert('⚠️ Ders programı okunamadı.\n\n' + (why || 'Ayrıntı için konsolu (F12) kontrol edin.'));
       }
     } catch (error) {
       console.error('PDF okuma hatası:', error);
@@ -861,6 +799,30 @@ export default function App() {
     }
   }, [records]);
 
+  // Modül düzeyindeki yardımcılar da seçili profilden okusun.
+  useEffect(() => { setActiveProfile(profile); }, [profile]);
+
+  // Bölüm veya intibak tercihi değişince analizi yeniden üret: intibak
+  // eşlemeleri ve ders planı profile bağlı olduğu için sonuç değişir.
+  useEffect(() => {
+    if (!transcriptText) return;
+    const result = analyzeTranscript(transcriptText, profile, { applyIntibak: showIntibak });
+    setAcademicAnalysis(result);
+    setRecords(result.active);
+  }, [profile, showIntibak, transcriptText]);
+
+  // Ders önerisi — Madde 19/5, 19/6 ve 10/2.
+  useEffect(() => {
+    if (!academicAnalysis || !profile) { setProposal(null); return; }
+    setProposal(buildProposal({
+      analysis: academicAnalysis,
+      profile,
+      offerings: departmentSchedule,
+      term: proposalTerm,
+      doubleMajor
+    }));
+  }, [academicAnalysis, profile, departmentSchedule, proposalTerm, doubleMajor]);
+
 
   // Dosya yükleme işlemi. PDF ve TXT desteklenir.
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -879,96 +841,27 @@ export default function App() {
     console.log('Dosya yüklendi:', file.name, 'Type:', file.type, 'Size:', file.size);
 
     try {
-      // PDF veya TXT dosyasını oku
-      let text: string;
-      if (file.type === 'application/pdf') {
-        console.log('PDF dosyası algılandı, pdfjs-dist yükleniyor...');
-        // PDF.js ile PDF'ten metin çıkar
-        const pdfjs = await import('pdfjs-dist');
-
-        // Worker'ı npm paketinden kullan - Vite bunu otomatik handle eder
-        // @ts-ignore - Vite özel import syntaxı
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.mjs',
-          import.meta.url
-        ).href;
-        console.log('PDF okunuyor...');
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-
-        console.log('PDF sayfa sayısı:', pdf.numPages);
-        text = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-
-          // PDF'den metni daha iyi yapılandırmak için satır sonlarını koru
-          let lastY = -1;
-          const pageLines: string[] = [];
-          let currentLine = '';
-
-          textContent.items.forEach((item: any) => {
-            // Y pozisyonu değiştiyse yeni satır
-            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-              if (currentLine.trim()) {
-                pageLines.push(currentLine.trim());
-              }
-              currentLine = '';
-            }
-            currentLine += item.str + ' ';
-            lastY = item.transform[5];
-          });
-
-          // Son satırı ekle
-          if (currentLine.trim()) {
-            pageLines.push(currentLine.trim());
-          }
-
-          text += pageLines.join('\n') + '\n';
-        }
-        console.log('PDF metin çıkarıldı, uzunluk:', text.length);
-        console.log('İlk 500 karakter:', text.substring(0, 500));
-        console.log('=== TAM METİN ===');
-        console.log(text);
-        console.log('=== TAM METİN SONU ===');
-      } else {
-        console.log('TXT dosyası olarak okunuyor...');
-        // TXT dosyası - FileReader kullan
-        text = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (event) => resolve(event.target?.result as string);
-          reader.onerror = () => reject(new Error('Dosya okunamadı'));
-          reader.readAsText(file);
-        });
-        console.log('TXT dosyası okundu, uzunluk:', text.length);
-      }
-
-      console.log('Metin parse ediliyor...');
+      // PDF'te kolon yapısı korunarak okunur (bkz. buildLinesFromPdfItems).
+      const text = await readTranscriptFile(file);
       setTranscriptText(text);
-      let parsed = parseTranscriptAdvanced(text);
-      console.log('Parse edilen kayıt sayısı:', parsed.length);
 
-      if (parsed.length === 0) {
-        alert('Dosyadan ders kaydı okunamadı! Lütfen geçerli bir transkript yüklediğinizden emin olun.');
+      // Tüm kural bilgisi engine/analyze içinde; burada yalnızca sonuç tüketilir.
+      const result = analyzeTranscript(text, profile, { applyIntibak: showIntibak });
+      setAcademicAnalysis(result);
+
+      if (result.active.length === 0) {
+        // Artık sessiz başarısızlık yok: neden "Okuma raporu"nda satır satır görünür.
+        const errors = result.diagnostics.filter(d => d.level === 'error');
+        alert(
+          'Transkriptten ders okunamadı.\n\n' +
+          (errors.map(e => '• ' + e.message).join('\n') || 'Ayrıntı için "Okuma raporu" bölümüne bakın.')
+        );
         return;
       }
 
-      if (showIntibak) {
-        console.log('İntibak uygulanıyor...');
-        parsed = applyIntibak(parsed);
-      }
-
-      // NUCLEAR OPTION: Kesin Filtreleme
-      // Bu dersler ne olursa olsun listeden silinmeli
-      parsed = parsed.filter(r =>
-        r.courseCode !== 'MFALM102' &&
-        r.courseCode !== 'TTTT02'
-      );
-
-      setRecords(parsed);
+      setRecords(result.active);
       setSimulationRecords([]); // Clear old simulation data when new file is loaded
       setStep(2);
-      console.log('İşlem başarılı, adım 2\'ye geçiliyor');
     } catch (error) {
       console.error('Dosya yükleme hatası:', error);
       alert('Dosya okunamadı. Lütfen geçerli bir PDF veya TXT dosyası yükleyin.\n\nHata: ' + (error as Error).message);
@@ -980,8 +873,8 @@ export default function App() {
 
   // Geçilen dersler kümesi
   const completedCourses = new Set(records.filter(r => r.grade.passed).map(r => r.courseCode));
-  // EEM413/414 kontrolü
-  const eem413Check = gpa ? checkEEM413Eligibility(records, gpa) : null;
+  // Bitirme projesi uygunluğu (Madde 8/4) — ders kodları bölüm profilinden
+  const eem413Check = gpa ? checkGraduationProjectEligibility(records, gpa) : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -993,7 +886,7 @@ export default function App() {
               <span className="hidden md:block">{t('header_title_desktop')}</span>
             </h1>
             <p className="mt-2 text-gray-600 font-medium">
-              {t('header_subtitle')}
+              {profile ? profile.name : t('header_no_department')}
             </p>
           </div>
 
@@ -1037,6 +930,20 @@ export default function App() {
         {step === 1 && (
           <div className="bg-white rounded-xl shadow-lg p-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">{t('upload_title')}</h2>
+
+            {/* Bölüm profili — ders planı, intibak ve uzmanlaşma verisi buradan gelir. */}
+            <DepartmentSelector
+              value={departmentCode}
+              onChange={(code, loaded) => { setDepartmentCode(code); setProfile(loaded); }}
+            />
+
+            {academicAnalysis && (
+              <TranscriptDiagnostics
+                diagnostics={academicAnalysis.diagnostics}
+                superseded={academicAnalysis.superseded}
+              />
+            )}
+
             <div className="mb-4 flex items-center">
               <input
                 type="checkbox"
@@ -1142,6 +1049,36 @@ export default function App() {
                 <span>{t('download_report')}</span>
               </button>
             </div>
+
+            {/* Madde 19/6 — akademik yetersizlik aşaması ve tekrar yükümlülüğü */}
+            {academicAnalysis && (
+              <div className="mb-6 space-y-6">
+                <AcademicStandingPanel
+                  standing={academicAnalysis.standing}
+                  retakes={academicAnalysis.retakes}
+                  history={academicAnalysis.history}
+                />
+                <CourseProposalPanel
+                  result={proposal}
+                  term={proposalTerm}
+                  onTermChange={setProposalTerm}
+                  doubleMajor={doubleMajor}
+                  onDoubleMajorChange={setDoubleMajor}
+                  disabledReason={!profile ? 'Ders önerisi için önce bölüm seçin.' : undefined}
+                />
+
+                {/* Hedef GNO → hangi dersi tekrar, hangi notla (Madde 19/3) */}
+                <GpaTargetPlanner
+                  records={academicAnalysis.active}
+                  newCourseOptions={
+                    profile
+                      ? profile.courses.filter(c =>
+                          !academicAnalysis.active.some(r => r.courseCode.toUpperCase() === c.code.toUpperCase()))
+                      : []
+                  }
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className={`p-6 rounded-2xl shadow-lg transform hover:scale-[1.02] transition-all duration-300 ${gpa.gno >= 3.0 ? 'bg-gradient-to-br from-violet-600 to-indigo-600 text-white' : gpa.gno >= 2.0 ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white' : 'bg-gradient-to-br from-orange-500 to-red-500 text-white'}`}>
@@ -1287,7 +1224,7 @@ export default function App() {
                       </div>
                     </div>
                     {(() => {
-                      const simCheck = checkEEM413Eligibility(simulationRecords, simGpaResult);
+                      const simCheck = checkGraduationProjectEligibility(simulationRecords, simGpaResult);
                       return (
                         <div className={`p-6 rounded-2xl shadow-sm border ${simCheck.eligible ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                           <div className={`text-sm font-medium mb-1 ${simCheck.eligible ? 'text-green-600' : 'text-red-600'}`}>{t('graduation_cap_title')}</div>
@@ -1366,14 +1303,14 @@ export default function App() {
                               simulationRecords.forEach(r => {
                                 takenCodes.add(r.courseCode); // Orijinal kod
                                 // İntibak kontrolü
-                                const mapping = INTIBAK_MAPPINGS.find(m => m.oldCode === r.courseCode);
+                                const mapping = getActiveIntibak().find(m => m.oldCode === r.courseCode);
                                 if (mapping) {
                                   takenCodes.add(mapping.newCode); // Yeni kod
                                 }
                               });
 
                               const searchLower = simAddCourseCode.toLowerCase();
-                              const filtered = ALL_COURSES
+                              const filtered = getActiveCourses()
                                 .filter(c => !takenCodes.has(c.code))
                                 .filter(c =>
                                   c.code.toLowerCase().includes(searchLower) ||
@@ -1744,6 +1681,15 @@ export default function App() {
         {/* Step 4: Schedule Planning */}
         {(step as any) === 4 && (
           <div className="space-y-6">
+            {/* Okulun yayımladığı programı yükleyip duruma göre program kur.
+                Teorik ("All Groups") oturumlar koşulsuz, lab oturumları yalnızca
+                öğrencinin grubu için eklenir. */}
+            <ScheduleBuilder
+              knownCourseCodes={profile?.courses.map(c => c.code) ?? []}
+              proposal={proposal?.proposal ?? []}
+              retakes={academicAnalysis?.retakes ?? []}
+            />
+
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('schedule_title')}</h2>
               <p className="text-gray-600 mb-6">{t('schedule_desc')}</p>
@@ -2122,7 +2068,8 @@ export default function App() {
                               <div>
                                 <div className="font-bold text-red-900 text-sm">{t('conflict_detected')}</div>
                                 <div className="text-red-700 text-sm mt-1">{c.courses.join(' ve ')}</div>
-                                <div className="text-red-600 text-xs mt-0.5">{c.time}</div>
+                                <div className="text-red-600 text-xs mt-0.5">{c.day} {c.time}</div>
+                                <div className="text-red-500 text-xs mt-0.5">{c.detail}</div>
                               </div>
                             </div>
                           ))}
@@ -2258,8 +2205,8 @@ export default function App() {
       <footer className="bg-white border-t mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-center text-gray-600 text-sm font-medium">
-            <span className="md:hidden">{t('footer_title_mobile')}</span>
-            <span className="hidden md:block">{t('footer_title_desktop')}</span>
+            <span className="md:hidden">{t('header_title_mobile')}</span>
+            <span className="hidden md:block">{t('header_title_desktop')}</span>
           </p>
 
           <div className="flex flex-col items-center gap-3 mt-4">
@@ -2269,7 +2216,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-3 text-xs text-gray-400">
-              <span>{t('footer_author')}</span>
+              <span>{t('footer_developer')}</span>
               <span className="text-gray-300">|</span>
               <a href="https://github.com/" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-indigo-500 hover:text-indigo-700 transition-colors font-medium">
                 <Github size={14} />

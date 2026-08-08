@@ -5,6 +5,13 @@
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "jsx": "react-jsx",
     "strict": true,
+    /**
+     * Derlemeyi Vite yapar; tsc yalnızca tip denetimi içindir.
+     * noEmit olmadan `tsc` her .ts/.tsx yanına bir .js üretiyordu ve Vite
+     * modül çözümlemesinde .js'i .tsx'ten ÖNCE denediği için uygulama
+     * kaynak kodu yerine bu eski derleme çıktılarını çalıştırıyordu.
+     */
+    "noEmit": true,
     "moduleResolution": "Node",
     "resolveJsonModule": true,
     "esModuleInterop": true,
