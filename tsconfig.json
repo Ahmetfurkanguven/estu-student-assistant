@@ -18,6 +18,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
+  /**
+   * vite-env.d.ts kök dizindedir; yalnızca "src" taranırsa `vite/client`
+   * tipleri yüklenmez ve `import.meta.env` tanınmaz.
+   */
+  "include": ["src", "vite-env.d.ts"],
   "exclude": ["node_modules"]
 }

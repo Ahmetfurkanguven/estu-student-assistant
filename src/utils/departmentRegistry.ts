@@ -7,8 +7,19 @@ import type { DepartmentIndex, DepartmentIndexEntry, DepartmentProfile } from '.
  * desteklenmez ve kullanıcıya bunun nasıl ekleneceği açıkça söylenir.
  */
 
-// Vite dışında (test koşumu) `import.meta.env` tanımsızdır.
-const BASE: string = (import.meta as any)?.env?.BASE_URL ?? '/';
+/**
+ * Dağıtım kök yolu.
+ *
+ * DİKKAT: `import.meta.env` ifadesi Vite tarafından DERLEME ANINDA metin olarak
+ * değiştirilir. `(import.meta as any).env` gibi bir yazım bu eşleşmeyi bozar;
+ * üretim derlemesinde değer `undefined` kalır ve tüm istekler kök yola gider.
+ * GitHub Pages'te site `/estu-student-assistant/` altında yayımlandığı için bu,
+ * bölüm profillerinin 404 vermesine ve uygulamanın hiç açılmamasına yol açar.
+ *
+ * Bu yüzden ifade birebir `import.meta.env` olarak bırakılmalıdır. Vite dışında
+ * (Node ile test koşumu) `import.meta.env` tanımsızdır; `?.` bunu karşılar.
+ */
+const BASE: string = import.meta.env?.BASE_URL ?? '/';
 const DEPARTMENTS_ROOT = `${BASE.replace(/\/$/, '')}/data/departments`;
 
 export class DepartmentProfileError extends Error {
