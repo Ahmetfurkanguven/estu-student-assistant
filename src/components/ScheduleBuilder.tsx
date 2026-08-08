@@ -17,6 +17,12 @@ interface Props {
     /** Ders önerisiyle ortak dönem — ikisi ayrışırsa öneri ve program çelişir. */
     term: TermType;
     onTermChange: (term: TermType) => void;
+    /**
+     * Okunan program App'e bildirilir; ders önerisi "bu dönem açılan dersler"
+     * filtresini buradan besler. Bildirilmezse öneri hangi dersin açıldığını
+     * bilemez ve açılmayan dersleri önerir.
+     */
+    onOfferingsChange?: (offerings: ParsedOffering[]) => void;
 }
 
 const TERM_LABEL: Record<TermType, string> = {
@@ -56,7 +62,7 @@ const DAY_COLORS = [
  * oturumlarında yalnızca öğrencinin grubu eklenir.
  */
 export function ScheduleBuilder({
-    knownCourseCodes, proposal, retakes, ectsLimit, term, onTermChange
+    knownCourseCodes, proposal, retakes, ectsLimit, term, onTermChange, onOfferingsChange
 }: Props) {
     const [offerings, setOfferings] = useState<ParsedOffering[]>([]);
     const [diagnostics, setDiagnostics] = useState<ScheduleParseDiagnostic[]>([]);
@@ -152,6 +158,7 @@ export function ScheduleBuilder({
             const items = await readSchedulePdf(file);
             const result = parseSchedulePdf(items, { knownCourseCodes });
             setOfferings(result.offerings);
+            onOfferingsChange?.(result.offerings);
             setDiagnostics(result.diagnostics);
             setAvailableGroups(result.availableGroups);
             setDetectedTerm(result.meta);
