@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
-    parseSchedulePdf, parseCellText, buildCells, resolveGroupRanges, type PdfTextItem
+    parseSchedulePdf, parseCellText, buildCells, resolveGroupRanges, detectScheduleMeta, type PdfTextItem
 } from '../src/utils/schedulePdfParser';
 import { detectScheduleConflicts } from '../src/utils/scheduleUtils';
 
@@ -198,7 +198,19 @@ if (!dir || !existsSync(dir)) {
             }
         }
 
-        const { offerings, diagnostics, availableGroups } = parseSchedulePdf(items);
+        const { offerings, diagnostics, availableGroups, meta } = parseSchedulePdf(items);
+
+        // Dönem tespiti: dosya adı "GUZ/Güz/Fall" ya da "BAHAR/Spring" içeriyorsa
+        // parser da aynı dönemi bulmalı. Öğrenci dönemlik program hazırlar.
+        const fromName = /guz|güz|fall/i.test(file) ? 'guz'
+            : /bahar|spring/i.test(file) ? 'bahar' : null;
+        if (fromName) {
+            check(`${file.slice(0, 40)}: dönem başlıktan okundu (${meta.term})`,
+                meta.term === fromName, `dosya adı ${fromName}, başlık ${meta.term}`);
+        }
+        check(`${file.slice(0, 40)}: akademik yıl okundu`,
+            meta.academicYear !== null && /^\d{4}-\d{4}$/.test(meta.academicYear),
+            `${meta.academicYear}`);
         const days = new Set(offerings.map(o => o.day));
         const courses = new Set(offerings.map(o => o.courseCode));
         const problems = diagnostics.filter(d => d.level !== 'info');
@@ -227,6 +239,24 @@ if (!dir || !existsSync(dir)) {
         );
     }
 }
+
+// ===========================================================================
+console.log('\n── Dönem tespiti (öğrenci dönemlik program hazırlar) ───────');
+
+const meta = (texts: string[]) => detectScheduleMeta(texts.map(text => ({ text })));
+
+eq('güz dönemi okundu',
+    meta(['2025-2026 ÖĞRETİM YILI GÜZ DÖNEMİ HAFTALIK DERS PROGRAMI']).term, 'guz');
+eq('bahar dönemi okundu',
+    meta(['2024-2025 ÖĞRETİM YILI BAHAR DÖNEMİ HAFTALIK DERS PROGRAMI']).term, 'bahar');
+eq('yaz okulu okundu', meta(['2023-2024 YAZ OKULU DERS PROGRAMI']).term, 'yaz');
+eq('İngilizce başlık okundu', meta(['2021-2022 Fall Semester Schedule']).term, 'guz');
+eq('akademik yıl ayrıştırıldı',
+    meta(['2025-2026 ÖĞRETİM YILI GÜZ DÖNEMİ']).academicYear, '2025-2026');
+eq('dönem yoksa null döner', meta(['ELEKTRİK ELEKTRONİK MÜHENDİSLİĞİ BÖLÜMÜ']).term, null);
+
+// Türkçe karakterler PDF'te bölünmüş gelebilir — sadeleştirilmiş arama tutmalı
+eq('bölünmüş Türkçe karakterli başlık', meta(['2025-2026', 'GÜZ', 'DÖNEM', 'İ']).term, 'guz');
 
 // ===========================================================================
 console.log('\n── Çakışma: All Groups / lab grubu ayrımı ──────────────────');

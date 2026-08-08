@@ -1689,6 +1689,8 @@ export default function App() {
               proposal={proposal?.proposal ?? []}
               retakes={academicAnalysis?.retakes ?? []}
               ectsLimit={proposal?.ectsLimit}
+              term={proposalTerm}
+              onTermChange={setProposalTerm}
             />
 
             <div className="bg-white rounded-xl shadow-lg p-8">

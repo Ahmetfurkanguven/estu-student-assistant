@@ -62,11 +62,49 @@ export interface ParsedOffering extends ScheduleOffering {
     rawText: string;
 }
 
+/**
+ * Programın hangi döneme ait olduğu — başlıktan okunur.
+ *
+ * Öğrenci her zaman DÖNEMLİK program hazırlar; yıllık program diye bir şey
+ * yoktur. Bu yüzden yüklenen dosyanın hangi dönem olduğu, ders önerisinden
+ * AKTS sınırına kadar her şeyi etkiler.
+ */
+export interface ScheduleMeta {
+    term: 'guz' | 'bahar' | 'yaz' | null;
+    /** "2025-2026" */
+    academicYear: string | null;
+    /** Başlığın okunan hâli — kullanıcıya doğrulatmak için. */
+    label: string | null;
+}
+
 export interface ParsedScheduleResult {
     offerings: ParsedOffering[];
     diagnostics: ScheduleParseDiagnostic[];
     /** Programda geçen tüm grup harfleri (şube seçimi için). */
     availableGroups: string[];
+    meta: ScheduleMeta;
+}
+
+/** "2025-2026 ÖĞRETİM YILI GÜZ DÖNEMİ HAFTALIK DERS PROGRAMI" */
+export function detectScheduleMeta(cells: Array<{ text: string }>): ScheduleMeta {
+    const haystack = cells.map(c => c.text).join(' ');
+
+    const yearMatch = /(\d{4})\s*[-–—/]\s*(\d{4})/.exec(haystack);
+    const academicYear = yearMatch ? `${yearMatch[1]}-${yearMatch[2]}` : null;
+
+    // Türkçe karakterler PDF'te bölünebildiği için sadeleştirilmiş arama.
+    const folded = haystack.toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ü/g, 'U').replace(/Ö/g, 'O')
+        .replace(/Ş/g, 'S').replace(/Ç/g, 'C').replace(/Ğ/g, 'G');
+
+    let term: ScheduleMeta['term'] = null;
+    if (/\bGUZ\b|\bFALL\b/.test(folded)) term = 'guz';
+    else if (/\bBAHAR\b|\bSPRING\b/.test(folded)) term = 'bahar';
+    else if (/\bYAZ\b|\bSUMMER\b/.test(folded)) term = 'yaz';
+
+    const labelMatch = /(\d{4}\s*[-–—/]\s*\d{4}[^|]{0,60}?(?:DÖNEM|DONEM|SEMESTER|YARIYIL)\w*)/i.exec(haystack);
+
+    return { term, academicYear, label: labelMatch ? labelMatch[1].replace(/\s+/g, ' ').trim() : null };
 }
 
 export interface ScheduleParseOptions {
@@ -627,7 +665,7 @@ export function parseSchedulePdf(
             level: 'error', code: 'NO_TEXT',
             message: 'PDF’ten metin çıkarılamadı. Dosya taranmış (görüntü) olabilir.'
         });
-        return { offerings: [], diagnostics, availableGroups: [] };
+        return { offerings: [], diagnostics, availableGroups: [], meta: { term: null, academicYear: null, label: null } };
     }
 
     const byPage = new Map<number, Cell[]>();
@@ -781,7 +819,21 @@ export function parseSchedulePdf(
         });
     }
 
-    return { offerings, diagnostics, availableGroups };
+    const meta = detectScheduleMeta(cells);
+    if (meta.term) {
+        diagnostics.push({
+            level: 'info', code: 'TERM',
+            message: `Program dönemi: ${meta.academicYear ?? ''} ` +
+                `${meta.term === 'guz' ? 'Güz' : meta.term === 'bahar' ? 'Bahar' : 'Yaz okulu'}`.trim()
+        });
+    } else {
+        diagnostics.push({
+            level: 'warning', code: 'TERM_UNKNOWN',
+            message: 'Programın hangi döneme ait olduğu başlıktan okunamadı — dönemi elle seçin.'
+        });
+    }
+
+    return { offerings, diagnostics, availableGroups, meta };
 }
 
 /**

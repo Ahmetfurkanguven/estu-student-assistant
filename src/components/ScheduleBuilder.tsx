@@ -1,10 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Upload, CalendarDays, AlertCircle, CheckCircle2, Wand2 } from 'lucide-react';
-import type { ParsedOffering, ScheduleParseDiagnostic } from '../utils/schedulePdfParser';
+import type { ParsedOffering, ScheduleParseDiagnostic, ScheduleMeta } from '../utils/schedulePdfParser';
 import { parseSchedulePdf, readSchedulePdf } from '../utils/schedulePdfParser';
 import { buildSchedulePlan, buildWeeklyGrid, groupOfferings, describeSessions } from '../utils/schedulePlanner';
 import type { ProposedCourse } from '../utils/courseSelectionRules';
-import type { RetakeItem } from '../utils/repeatRules';
+import type { RetakeItem, TermType } from '../utils/repeatRules';
 
 interface Props {
     /** Bölüm profilindeki ders kodları — ders/derslik ayrımını kesinleştirir. */
@@ -14,6 +14,29 @@ interface Props {
     retakes: RetakeItem[];
     /** Madde 10/2 dönem AKTS üst sınırı. */
     ectsLimit?: number;
+    /** Ders önerisiyle ortak dönem — ikisi ayrışırsa öneri ve program çelişir. */
+    term: TermType;
+    onTermChange: (term: TermType) => void;
+}
+
+const TERM_LABEL: Record<TermType, string> = {
+    guz: 'Güz yarıyılı',
+    bahar: 'Bahar yarıyılı',
+    yaz: 'Yaz okulu'
+};
+
+/**
+ * Ders planındaki yarıyıl ile dönem uyumu.
+ *
+ * Tek sayılı yarıyıllar (1, 3, 5, 7) güz; çift sayılılar (2, 4, 6, 8) bahardır.
+ * Madde 19/5 tekrar derslerinin "ders planında gösterilen döneminde"
+ * alınmasını ister; ancak aynı madde "kendi dönemi dışında açılan bir dersi
+ * talep etmesi durumunda alabilir" der. Bu yüzden uyumsuzluk ENGEL değil,
+ * bilgilendirmedir — ders programda açıldıysa alınabilir.
+ */
+function matchesTerm(planSemester: number | null, term: TermType): boolean {
+    if (planSemester == null || term === 'yaz') return true;
+    return term === 'guz' ? planSemester % 2 === 1 : planSemester % 2 === 0;
 }
 
 const DAY_COLORS = [
@@ -32,10 +55,13 @@ const DAY_COLORS = [
  * Teorik ("All Groups") oturumlar koşulsuz eklenir; laboratuvar/şube
  * oturumlarında yalnızca öğrencinin grubu eklenir.
  */
-export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit }: Props) {
+export function ScheduleBuilder({
+    knownCourseCodes, proposal, retakes, ectsLimit, term, onTermChange
+}: Props) {
     const [offerings, setOfferings] = useState<ParsedOffering[]>([]);
     const [diagnostics, setDiagnostics] = useState<ScheduleParseDiagnostic[]>([]);
     const [availableGroups, setAvailableGroups] = useState<string[]>([]);
+    const [detectedTerm, setDetectedTerm] = useState<ScheduleMeta | null>(null);
     const [preferredGroup, setPreferredGroup] = useState<string>('');
     const [selected, setSelected] = useState<string[]>([]);
     const [groupChoices, setGroupChoices] = useState<Record<string, string>>({});
@@ -128,6 +154,9 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit
             setOfferings(result.offerings);
             setDiagnostics(result.diagnostics);
             setAvailableGroups(result.availableGroups);
+            setDetectedTerm(result.meta);
+            // Dosyanın kendi dönemi, elle seçilenden daha güvenilirdir.
+            if (result.meta.term) onTermChange(result.meta.term);
             setSelected([]);
             setGroupChoices({});
         } catch (err) {
@@ -151,15 +180,22 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit
             ).map(r => r.courseCode),
             ...proposal.map(p => p.course.code)
         ];
+        const mandatory = new Set(retakes.map(r => r.courseCode.toUpperCase()));
         const seen = new Set<string>();
-        const available = wanted
+
+        const picked = wanted
             .map(c => c.toUpperCase())
             .filter(c => {
-                if (seen.has(c) || !catalogue.has(c)) return false;
+                if (seen.has(c)) return false;
+                // Tekrar dersleri programda AÇILMAMIŞ olsa bile listeye girer:
+                // öğrenci "bu dönem yok" bilgisini görmeli. Madde 19/5 bu dersin
+                // ders planındaki döneminde alınacağını söyler; sessizce
+                // gizlemek öğrenciyi yükümlülüğünden habersiz bırakır.
+                if (!catalogue.has(c) && !mandatory.has(c)) return false;
                 seen.add(c);
                 return true;
             });
-        setSelected(available);
+        setSelected(picked);
     }
 
     function toggle(code: string) {
@@ -177,9 +213,46 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit
                     Ders programı oluştur
                 </h3>
 
+                {/* Öğrenci her zaman DÖNEMLİK program hazırlar; hangi yarıyıl
+                    olduğu ders önerisini ve AKTS sınırını da belirler. */}
+                <div className="mb-4">
+                    <span className="block text-sm text-gray-600 mb-1.5">Hangi yarıyıl için program hazırlıyorsunuz?</span>
+                    <div className="flex flex-wrap gap-2">
+                        {(['guz', 'bahar', 'yaz'] as TermType[]).map(t => (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() => onTermChange(t)}
+                                className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                                    term === t
+                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium'
+                                        : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                {TERM_LABEL[t]}
+                            </button>
+                        ))}
+                    </div>
+
+                    {detectedTerm?.term && (
+                        <p className="text-xs text-gray-500 mt-1.5">
+                            Yüklenen dosyanın başlığından okundu:{' '}
+                            <strong>{detectedTerm.academicYear ?? ''} {TERM_LABEL[detectedTerm.term]}</strong>
+                            {detectedTerm.term !== term && ' — elle değiştirdiniz.'}
+                        </p>
+                    )}
+                    {detectedTerm && !detectedTerm.term && (
+                        <p className="text-xs text-amber-700 mt-1.5">
+                            Dosyanın dönemi başlıktan okunamadı; yukarıdan doğru yarıyılı seçin.
+                        </p>
+                    )}
+                </div>
+
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                     <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-700">Bölümün yayımladığı haftalık ders programı PDF'ini yükleyin</p>
+                    <p className="text-sm text-gray-700">
+                        {TERM_LABEL[term]} için bölümün yayımladığı haftalık ders programı PDF'ini yükleyin
+                    </p>
                     <input ref={fileRef} type="file" accept=".pdf" onChange={handleUpload} className="hidden" id="scheduleFile" />
                     <label
                         htmlFor="scheduleFile"
@@ -396,7 +469,12 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit
                                                         : p.priority === 2 ? 'Yetersizlik tekrarı' : 'Normal akış'}
                                                 </span>
                                                 {p.planSemester && (
-                                                    <span className="text-xs text-gray-500">{p.planSemester}. yarıyıl</span>
+                                                    <span className={`text-xs ${
+                                                        matchesTerm(p.planSemester, term) ? 'text-gray-500' : 'text-amber-700'
+                                                    }`}>
+                                                        {p.planSemester}. yarıyıl
+                                                        {!matchesTerm(p.planSemester, term) && ' · kendi dönemi değil'}
+                                                    </span>
                                                 )}
                                                 {p.ects > 0 && <span className="text-xs text-gray-500">{p.ects} AKTS</span>}
                                                 <span className="text-xs text-gray-400 ml-auto">{p.regulation}</span>
@@ -411,6 +489,23 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit
                                     );
                                 })}
                             </div>
+
+                            {(() => {
+                                // Madde 19/5: ders kendi döneminde alınır, ancak kendi
+                                // dönemi dışında açılmışsa talep edilerek alınabilir.
+                                const offTerm = plan.placements.filter(
+                                    p => p.sessions.length > 0 && !matchesTerm(p.planSemester, term)
+                                );
+                                if (!offTerm.length) return null;
+                                return (
+                                    <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                                        {offTerm.map(p => p.courseCode).join(', ')} normalde{' '}
+                                        {term === 'guz' ? 'bahar' : 'güz'} yarıyılı dersi ama bu dönem programda
+                                        açılmış. Madde 19/5 uyarınca kendi dönemi dışında açılan bir dersi
+                                        talep ederek alabilirsiniz.
+                                    </p>
+                                );
+                            })()}
 
                             {plan.notes.length > 0 && (
                                 <ul className="mt-3 space-y-1 text-xs text-gray-600">
