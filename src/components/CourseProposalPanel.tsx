@@ -106,20 +106,89 @@ export function CourseProposalPanel({
                         </div>
                     )}
 
-                    {result.deferred.length > 0 && (
-                        <details className="mt-4">
-                            <summary className="text-sm text-gray-600 cursor-pointer">
-                                AKTS sınırına sığmayan {result.deferred.length} ders
-                            </summary>
-                            <ul className="mt-2 text-sm text-gray-500 space-y-1">
-                                {result.deferred.map(p => (
-                                    <li key={p.course.code}>
-                                        <span className="font-mono">{p.course.code}</span> — {p.course.name} ({p.course.ects} AKTS)
-                                    </li>
-                                ))}
-                            </ul>
-                        </details>
-                    )}
+                    {result.deferred.length > 0 && (() => {
+                        // Ayrım önemli: tekrar kapsamındaki dersin sığmaması bir SORUNDUR
+                        // (alınması zorunlu), ders planındaki 100+ dersin sığmaması ise
+                        // normaldir. Hepsini tek listede saymak "118 ders sığmadı" gibi
+                        // anlamsız bir sayı üretiyor ve asıl uyarıyı gizliyordu.
+                        const blockedRetakes = result.deferred.filter(p => p.priority < 3);
+                        const normalFlow = result.deferred.filter(p => p.priority === 3);
+
+                        return (
+                        <div className="mt-4 border border-amber-200 bg-amber-50 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-amber-900 mb-1">
+                                {blockedRetakes.length > 0
+                                    ? `${blockedRetakes.length} tekrar dersi bu döneme sığmadı`
+                                    : 'Ders planındaki diğer dersler bu döneme sığmadı'}
+                            </h4>
+
+                            {/* Kullanıcı "neden bu dersler listede yok?" diye sormamalı:
+                                kuralı, sırayı ve ne yapması gerektiğini burada açıkça yaz. */}
+                            <p className="text-sm text-amber-900">
+                                Yönetmelik bir dönemde alınabilecek dersi{' '}
+                                <strong>en çok {result.ectsLimit} AKTS</strong> ile sınırlıyor (Madde 10/2).
+                                Aşağıdaki dersler bu sınırın <strong>dışında kaldığı için önerilmedi</strong> —
+                                alamayacağınız anlamına gelmez.
+                            </p>
+                            <p className="text-sm text-amber-900 mt-2">
+                                Sıralama size bırakılmış değil: önce tekrar edilmesi zorunlu dersler
+                                (FF/YZ/DZ), sonra akademik yetersizlik kapsamındaki dersler, en son
+                                normal akış dersleri yerleştirilir. Her grupta{' '}
+                                <strong>yarıyılı en küçük olan</strong> ders önce gelir (Madde 19/5).
+                                Bu yüzden listede kalanlar en düşük öncelikli derslerdir.
+                            </p>
+
+                            {blockedRetakes.length > 0 && (
+                                <>
+                                    <p className="text-sm font-medium text-amber-900 mt-3">
+                                        Tekrar kapsamında olduğu hâlde sığmayanlar — bunları danışmanınıza bildirin:
+                                    </p>
+                                    <ul className="mt-1 space-y-1">
+                                        {blockedRetakes.map(p => (
+                                            <li key={p.course.code} className="text-sm text-amber-900 flex flex-wrap gap-x-2">
+                                                <span className="font-mono font-medium">{p.course.code}</span>
+                                                <span className="text-amber-800">{p.course.name}</span>
+                                                <span className="text-amber-700">· {p.course.ects} AKTS</span>
+                                                <span className="text-amber-700">
+                                                    · {p.priority === 1 ? 'zorunlu tekrar' : 'yetersizlik tekrarı'}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </>
+                            )}
+
+                            {normalFlow.length > 0 && (
+                                <details className="mt-3">
+                                    <summary className="text-sm text-amber-900 cursor-pointer">
+                                        Ders planındaki diğer {normalFlow.length} ders — bu dönem sırası gelmedi
+                                    </summary>
+                                    <p className="text-xs text-amber-800 mt-1 mb-2">
+                                        Bunlar mezuniyete kadar alacağınız derslerin tamamı. Tekrar
+                                        dersleriniz bittikçe sıraları gelecek.
+                                    </p>
+                                    <ul className="space-y-0.5 max-h-48 overflow-y-auto">
+                                        {normalFlow.map(p => (
+                                            <li key={p.course.code} className="text-xs text-amber-800 flex flex-wrap gap-x-2">
+                                                <span className="font-mono">{p.course.code}</span>
+                                                <span>{p.course.name}</span>
+                                                <span>· {p.course.ects} AKTS</span>
+                                                {p.course.semester && <span>· {p.course.semester}. yarıyıl</span>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            )}
+
+                            <p className="text-xs text-amber-800 mt-3">
+                                Ne yapabilirsiniz: bu derslerden birini almak istiyorsanız, önerilen
+                                listeden daha düşük öncelikli bir dersi bırakıp yerine ekleyin — toplam{' '}
+                                {result.ectsLimit} AKTS'yi aşmamak kaydıyla. Tekrar edilmesi zorunlu
+                                bir ders sığmıyorsa bu bir danışman konusudur.
+                            </p>
+                        </div>
+                        );
+                    })()}
 
                     {result.logs.length > 0 && (
                         <details className="mt-3">

@@ -12,7 +12,7 @@ import { assessAcademicStanding, determineRetakes, getEctsLimit } from '../src/u
 import { generateCourseProposal, checkPrerequisites } from '../src/utils/courseSelectionRules';
 import { validateProfile } from '../src/utils/departmentRegistry';
 import { GRADES } from '../src/data/gradeSystem';
-import { computeBase, buildCandidates, projectCandidate, buildTargetPlan } from '../src/utils/gpaTarget';
+import { computeBase, buildCandidates, projectCandidate, buildTargetPlan, buildTargetPlans } from '../src/utils/gpaTarget';
 import { groupOfferings, buildSchedulePlan, buildWeeklyGrid } from '../src/utils/schedulePlanner';
 import type { ParsedOffering } from '../src/utils/schedulePdfParser';
 
@@ -512,6 +512,206 @@ eq('sonuçta çakışma kalmadı', planShift.conflicts.length, 0);
 // Programda olmayan ders
 const planMissing = buildSchedulePlan({ courseCodes: ['EEM999'], offerings: catalogue });
 eq('açılmayan ders bildirildi', planMissing.placements[0].status, 'not_offered');
+
+// ---------------------------------------------------------------------------
+section('Sabit teorik saat vs seçmeli grup');
+
+// EEM206: herkese ortak teorik + üç lab grubu.
+const withGroups: ParsedOffering[] = [
+    off({ courseCode: 'EEM206', day: 'Salı', startTime: '12:00', endTime: '13:00' }),
+    off({ courseCode: 'EEM206', day: 'Pazartesi', startTime: '14:00', endTime: '16:00', groups: ['A'], section: 'A', type: 'lab', room: 'Lab' }),
+    off({ courseCode: 'EEM206', day: 'Pazartesi', startTime: '16:00', endTime: '18:00', groups: ['B'], section: 'B', type: 'lab', room: 'Lab' }),
+    off({ courseCode: 'EEM206', day: 'Çarşamba', startTime: '09:00', endTime: '11:00', groups: ['C'], section: 'C', type: 'lab', room: 'Lab' })
+];
+
+const groupPlan = buildSchedulePlan({ offerings: withGroups, courseCodes: ['EEM206'] });
+const gp = groupPlan.placements[0];
+eq('sabit teorik oturum ayrı tutuldu', gp.fixedSessions.length, 1);
+eq('üç grup seçeneği listelendi', gp.options.length, 3);
+check('tüm seçenekler uygun', gp.options.every(o => o.available));
+check('seçenek saatleri okunur biçimde',
+    gp.options[0].label.includes('Pzt') && gp.options[0].label.includes('14:00'),
+    gp.options[0].label);
+check('seçenek türü lab olarak işaretli', gp.options.every(o => o.type === 'lab'));
+check('kaç grubun uygun olduğu mesajda', gp.message.includes('3/3'), gp.message);
+
+// Öğrenci elle grup seçebilir
+const manualPick = buildSchedulePlan({
+    offerings: withGroups, courseCodes: ['EEM206'], groupChoices: { EEM206: 'C' }
+});
+eq('elle seçilen grup uygulandı', manualPick.placements[0].chosenGroup, 'C');
+
+// Bir grup çakışırsa: o seçenek "uygun değil" işaretlenir, diğerine geçilir
+const busyMonday: ParsedOffering[] = [
+    ...withGroups,
+    off({ courseCode: 'EEM301', day: 'Pazartesi', startTime: '14:00', endTime: '16:00' })
+];
+const shifted = buildSchedulePlan({
+    offerings: busyMonday, courseCodes: ['EEM301', 'EEM206'], preferredGroup: 'A'
+});
+const shiftedPlacement = shifted.placements.find(p => p.courseCode === 'EEM206')!;
+check('çakışan grup uygun değil olarak işaretlendi',
+    shiftedPlacement.options.find(o => o.group === 'A')!.available === false);
+check('çakışmayan gruplar hâlâ uygun',
+    shiftedPlacement.options.filter(o => o.group !== 'A').every(o => o.available));
+check('otomatik olarak uygun bir gruba geçildi',
+    shiftedPlacement.chosenGroup !== 'A' && shiftedPlacement.status !== 'conflict',
+    `${shiftedPlacement.chosenGroup}`);
+eq('programda çakışma yok', shifted.conflicts.length, 0);
+
+// SABİT teorik saat çakışırsa hiçbir grup kurtaramaz — esneklik yok
+const fixedClash: ParsedOffering[] = [
+    ...withGroups,
+    off({ courseCode: 'EEM342', day: 'Salı', startTime: '12:00', endTime: '14:00' })
+];
+const hardConflict = buildSchedulePlan({
+    offerings: fixedClash, courseCodes: ['EEM342', 'EEM206']
+});
+const hc = hardConflict.placements.find(p => p.courseCode === 'EEM206')!;
+eq('sabit saat çakışması conflict', hc.status, 'conflict');
+eq('çakışma türü "sabit"', hc.conflictKind, 'sabit');
+check('mesaj değiştirilemezliği söylüyor', hc.message.includes('değiştirilemez'), hc.message);
+
+// Aynı saate düşen gruplar TEK seçenekte birleşir — "(Class-A-E Groups)" gibi
+// kayıtlar beş grubu aynı saatte toplar; bu bir seçim değildir.
+const sharedHour: ParsedOffering[] = [
+    off({ courseCode: 'BİL200', day: 'Salı', startTime: '16:00', endTime: '18:00', groups: ['A', 'B', 'C', 'D', 'E'], section: 'A-B-C-D-E' })
+];
+const sharedPlan = buildSchedulePlan({ offerings: sharedHour, courseCodes: ['BİL200'] });
+const sp = sharedPlan.placements[0];
+eq('aynı saatteki gruplar tek seçenekte birleşti', sp.options.length, 1);
+eq('birleşen gruplar korundu', sp.options[0].groups.join(''), 'ABCDE');
+eq('tek seçenek varsa seçim beklenmiyor', sp.status, 'placed');
+check('mesaj seçim gerekmediğini söylüyor',
+    sp.message.includes('Seçim gerektirmez'), sp.message);
+
+// Teorik uygun ama TÜM gruplar dolu → farklı bir çakışma türü
+const allGroupsBusy: ParsedOffering[] = [
+    off({ courseCode: 'EEM206', day: 'Salı', startTime: '12:00', endTime: '13:00' }),
+    off({ courseCode: 'EEM206', day: 'Pazartesi', startTime: '14:00', endTime: '16:00', groups: ['A'], section: 'A', type: 'lab' }),
+    off({ courseCode: 'EEM206', day: 'Pazartesi', startTime: '15:00', endTime: '17:00', groups: ['B'], section: 'B', type: 'lab' }),
+    off({ courseCode: 'EEM301', day: 'Pazartesi', startTime: '14:00', endTime: '17:00' })
+];
+const groupsBlocked = buildSchedulePlan({
+    offerings: allGroupsBusy, courseCodes: ['EEM301', 'EEM206']
+});
+const gb = groupsBlocked.placements.find(p => p.courseCode === 'EEM206')!;
+eq('grup kaynaklı çakışma türü', gb.conflictKind, 'grup');
+check('mesaj teoriğin uygun olduğunu söylüyor', gb.message.includes('Teorik saati uygun'), gb.message);
+check('yine de tüm seçenekler raporlandı', gb.options.length === 2);
+
+// Grubu olmayan ders: seçim gerektirmez
+const plainPlan = buildSchedulePlan({
+    offerings: [off({ courseCode: 'EEM301', day: 'Salı', startTime: '09:00', endTime: '11:00' })],
+    courseCodes: ['EEM301']
+});
+eq('grupsuz ders doğrudan yerleşti', plainPlan.placements[0].status, 'placed');
+eq('seçenek yok', plainPlan.placements[0].options.length, 0);
+check('mesaj seçim gerekmediğini söylüyor',
+    plainPlan.placements[0].message.includes('Seçim gerektirmez'),
+    plainPlan.placements[0].message);
+
+// ---------------------------------------------------------------------------
+section('Tekrar durumunda yerleştirme önceliği (Madde 19/5, 19/6, 10/2)');
+
+const req = (code: string, priority: 1 | 2 | 3, planSemester: number | null, ects: number) => ({
+    courseCode: code, priority, planSemester, ects,
+    reason: 'test', regulation: priority === 1 ? 'Madde 19/5' : priority === 2 ? 'Madde 19/6' : 'Ders planı'
+});
+
+// Çakışan iki ders: kıt kaynak (saat aralığı) zorunlu tekrara gider.
+const clash: ParsedOffering[] = [
+    off({ courseCode: 'EEM301', day: 'Pazartesi', startTime: '09:00', endTime: '11:00' }),
+    off({ courseCode: 'EEM209', day: 'Pazartesi', startTime: '10:00', endTime: '12:00' })
+];
+// Normal akış dersi listede ÖNCE gelse bile zorunlu tekrar önce yerleşmeli.
+const priorityPlan = buildSchedulePlan({
+    offerings: clash,
+    courses: [req('EEM301', 3, 5, 6), req('EEM209', 1, 3, 7.5)]
+});
+eq('zorunlu tekrar yerleşti',
+    priorityPlan.placements.find(p => p.courseCode === 'EEM209')!.status, 'placed');
+eq('normal akış dersi yerleşemedi',
+    priorityPlan.placements.find(p => p.courseCode === 'EEM301')!.status, 'conflict');
+check('gerekçede çakıştığı ders yazıyor',
+    priorityPlan.placements.find(p => p.courseCode === 'EEM301')!.message.includes('EEM209'));
+eq('programda çakışma kalmadı', priorityPlan.conflicts.length, 0);
+check('öncelik sırası listede korunuyor',
+    priorityPlan.placements[0].courseCode === 'EEM209');
+
+// İki zorunlu tekrar çakışırsa hiçbiri diğerini çıkaramaz; durum bildirilir.
+const bothMandatory = buildSchedulePlan({
+    offerings: clash,
+    courses: [req('EEM209', 1, 3, 7.5), req('EEM301', 1, 5, 6)]
+});
+eq('ikinci zorunlu tekrar çakışma olarak bildirildi',
+    bothMandatory.placements.find(p => p.courseCode === 'EEM301')!.status, 'conflict');
+check('danışman uyarısı üretildi',
+    bothMandatory.notes.some(n => n.includes('danışman')));
+
+// Yarıyılı en küçük olan önce yerleşir (Madde 19/5).
+const orderPlan = buildSchedulePlan({
+    offerings: clash,
+    courses: [req('EEM301', 1, 5, 6), req('EEM209', 1, 3, 7.5)]
+});
+eq('yarıyılı küçük olan yerleşti',
+    orderPlan.placements.find(p => p.courseCode === 'EEM209')!.status, 'placed');
+
+// AKTS sınırı: zorunlu tekrar, sınıra sığmak için normal akış dersini çıkarır.
+const roomy: ParsedOffering[] = [
+    off({ courseCode: 'EEM301', day: 'Salı', startTime: '09:00', endTime: '11:00' }),
+    off({ courseCode: 'EEM209', day: 'Perşembe', startTime: '09:00', endTime: '11:00' })
+];
+const ectsPlan = buildSchedulePlan({
+    offerings: roomy,
+    ectsLimit: 10,
+    courses: [req('EEM301', 3, 5, 6), req('EEM209', 1, 3, 7.5)]
+});
+eq('AKTS kotası zorunlu tekrara gitti',
+    ectsPlan.placements.find(p => p.courseCode === 'EEM209')!.status, 'placed');
+eq('normal akış dersi kotaya sığmadı',
+    ectsPlan.placements.find(p => p.courseCode === 'EEM301')!.status, 'ects_limit');
+check('toplam AKTS sınırı aşmadı', ectsPlan.totalEcts <= 10, `${ectsPlan.totalEcts}`);
+check('AKTS notu üretildi', ectsPlan.notes.some(n => n.includes('AKTS')));
+
+// Sınıra sığmayan düşük öncelikli ders açıkça bildirilir.
+const overflow = buildSchedulePlan({
+    offerings: roomy,
+    ectsLimit: 8,
+    courses: [req('EEM209', 1, 3, 7.5), req('EEM301', 3, 5, 6)]
+});
+eq('sığmayan ders ects_limit olarak işaretlendi',
+    overflow.placements.find(p => p.courseCode === 'EEM301')!.status, 'ects_limit');
+check('kalan kontenjan mesajda yazıyor',
+    overflow.placements.find(p => p.courseCode === 'EEM301')!.message.includes('AKTS'));
+
+// ---------------------------------------------------------------------------
+section('Ortalama hedefi — birden çok alternatif');
+
+const multi = buildTargetPlans(targetRecords, 3.0, targetCandidates);
+check('birden çok plan üretildi', multi.length > 1, `${multi.length}`);
+check('her planın etiketi var', multi.every(p => !!p.strategyLabel));
+check('planlar birbirinden farklı',
+    new Set(multi.map(p => p.steps.map(s => `${s.candidate.courseCode}:${s.requiredGrade}`).join('|'))).size === multi.length);
+check('hedefe ulaşan planlar önce sıralandı',
+    multi.every((p, i, arr) => i === 0 || Number(arr[i - 1].achievable) >= Number(p.achievable)));
+
+const spread = multi.find(p => p.strategy === 'en-kolay-notlar');
+const fewest = multi.find(p => p.strategy === 'en-az-ders');
+if (spread && fewest) {
+    check('"notlar düşük olsun" daha çok ders içeriyor',
+        spread.steps.length >= fewest.steps.length,
+        `${spread.steps.length} vs ${fewest.steps.length}`);
+    const worst = (p: typeof spread) => Math.max(...p.steps.map(s => s.requiredCoefficient));
+    check('"notlar düşük olsun" daha düşük not istiyor',
+        worst(spread) <= worst(fewest), `${worst(spread)} vs ${worst(fewest)}`);
+}
+
+const onlyRetakes = multi.find(p => p.strategy === 'sadece-tekrar');
+if (onlyRetakes) {
+    check('"sadece tekrar" planında yeni ders yok',
+        onlyRetakes.steps.every(s => s.candidate.kind === 'tekrar'));
+}
 
 // Haftalık ızgara
 const weekly = buildWeeklyGrid(planA.sessions);

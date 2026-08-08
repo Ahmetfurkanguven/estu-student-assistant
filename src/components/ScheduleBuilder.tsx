@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Upload, CalendarDays, AlertCircle, CheckCircle2, Wand2 } from 'lucide-react';
 import type { ParsedOffering, ScheduleParseDiagnostic } from '../utils/schedulePdfParser';
 import { parseSchedulePdf, readSchedulePdf } from '../utils/schedulePdfParser';
-import { buildSchedulePlan, buildWeeklyGrid, groupOfferings } from '../utils/schedulePlanner';
+import { buildSchedulePlan, buildWeeklyGrid, groupOfferings, describeSessions } from '../utils/schedulePlanner';
 import type { ProposedCourse } from '../utils/courseSelectionRules';
 import type { RetakeItem } from '../utils/repeatRules';
 
@@ -12,6 +12,8 @@ interface Props {
     /** Motorun önerdiği dersler (zorunlu tekrarlar başta). */
     proposal: ProposedCourse[];
     retakes: RetakeItem[];
+    /** Madde 10/2 dönem AKTS üst sınırı. */
+    ectsLimit?: number;
 }
 
 const DAY_COLORS = [
@@ -30,7 +32,7 @@ const DAY_COLORS = [
  * Teorik ("All Groups") oturumlar koşulsuz eklenir; laboratuvar/şube
  * oturumlarında yalnızca öğrencinin grubu eklenir.
  */
-export function ScheduleBuilder({ knownCourseCodes, proposal, retakes }: Props) {
+export function ScheduleBuilder({ knownCourseCodes, proposal, retakes, ectsLimit }: Props) {
     const [offerings, setOfferings] = useState<ParsedOffering[]>([]);
     const [diagnostics, setDiagnostics] = useState<ScheduleParseDiagnostic[]>([]);
     const [availableGroups, setAvailableGroups] = useState<string[]>([]);
@@ -42,14 +44,59 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes }: Props) 
 
     const catalogue = useMemo(() => groupOfferings(offerings), [offerings]);
 
+    /**
+     * Seçilen dersleri yönetmelik önceliğiyle birlikte motora verir.
+     * Öncelik bilgisi ders önerisinden gelir; elle eklenenler normal akış sayılır.
+     */
+    const planCourses = useMemo(() => {
+        const byCode = new Map(proposal.map(p => [p.course.code.toUpperCase(), p]));
+        const retakeByCode = new Map(retakes.map(r => [r.courseCode.toUpperCase(), r]));
+
+        return selected.map(code => {
+            const p = byCode.get(code);
+            const r = retakeByCode.get(code);
+            if (p) {
+                return {
+                    courseCode: code,
+                    courseName: p.course.name,
+                    priority: p.priority,
+                    planSemester: p.course.semester ?? null,
+                    ects: p.course.ects,
+                    reason: p.reason,
+                    regulation: p.regulation
+                };
+            }
+            if (r) {
+                return {
+                    courseCode: code,
+                    courseName: r.courseName,
+                    priority: (r.kind === 'basarisiz' ? 1 : 2) as 1 | 2,
+                    planSemester: r.planSemester,
+                    ects: r.ects,
+                    reason: r.reason,
+                    regulation: r.regulation
+                };
+            }
+            return {
+                courseCode: code,
+                priority: 3 as const,
+                planSemester: null,
+                ects: 0,
+                reason: 'Elle eklendi',
+                regulation: '—'
+            };
+        });
+    }, [selected, proposal, retakes]);
+
     const plan = useMemo(
         () => buildSchedulePlan({
-            courseCodes: selected,
+            courses: planCourses,
             offerings,
             preferredGroup: preferredGroup || null,
-            groupChoices
+            groupChoices,
+            ectsLimit
         }),
-        [selected, offerings, preferredGroup, groupChoices]
+        [planCourses, offerings, preferredGroup, groupChoices, ectsLimit]
     );
 
     const grid = useMemo(() => buildWeeklyGrid(plan.sessions), [plan.sessions]);
@@ -90,10 +137,18 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes }: Props) 
         }
     }
 
-    /** Zorunlu tekrarlar + önerilen dersleri, programda açık olanlarla sınırlayarak ekler. */
+    /**
+     * Tekrar edilmesi zorunlu dersler + önerilenleri, yönetmelik önceliğine
+     * göre ekler. Sıralama motorda da uygulanır; buradaki sıra yalnızca
+     * hangi derslerin seçileceğini belirler.
+     */
     function autoFill() {
         const wanted = [
-            ...retakes.map(r => r.courseCode),
+            // Madde 19/5 & 19/6: tekrar dersleri önce, yarıyılı küçük olandan.
+            ...[...retakes].sort((a, b) =>
+                (a.kind === b.kind ? 0 : a.kind === 'basarisiz' ? -1 : 1) ||
+                (a.planSemester ?? 99) - (b.planSemester ?? 99)
+            ).map(r => r.courseCode),
             ...proposal.map(p => p.course.code)
         ];
         const seen = new Set<string>();
@@ -237,27 +292,131 @@ export function ScheduleBuilder({ knownCourseCodes, proposal, retakes }: Props) 
                         </div>
                     </div>
 
-                    {/* ---- Grup seçimleri ---- */}
-                    {plan.placements.some(p => p.availableGroups.length > 1 && p.sessions.length > 0) && (
+                    {/* ---- Grup seçenekleri ---- */}
+                    {plan.placements.some(p => p.options.length > 0) && (
                         <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="font-medium text-gray-800 mb-3">Grup seçimleri</h4>
-                            <div className="space-y-2">
-                                {plan.placements
-                                    .filter(p => p.availableGroups.length > 1 && p.sessions.length > 0)
-                                    .map(p => (
-                                        <div key={p.courseCode} className="flex flex-wrap items-center gap-3 text-sm">
-                                            <span className="font-mono w-24">{p.courseCode}</span>
-                                            <select
-                                                className="border border-gray-300 rounded px-2 py-1"
-                                                value={groupChoices[p.courseCode] ?? p.chosenGroup ?? ''}
-                                                onChange={e => setGroupChoices(prev => ({ ...prev, [p.courseCode]: e.target.value }))}
-                                            >
-                                                {p.availableGroups.map(g => <option key={g} value={g}>{g} grubu</option>)}
-                                            </select>
-                                            <span className="text-xs text-gray-500">{p.message}</span>
+                            <h4 className="font-medium text-gray-800 mb-1">Grup seçenekleriniz</h4>
+                            <p className="text-xs text-gray-500 mb-4">
+                                <strong>Teorik saatler</strong> (tüm gruplara ortak) sabittir — dersi
+                                alan herkes aynı saatte bulunur, seçim hakkı yoktur.{' '}
+                                <strong>Laboratuvar ve şube grupları</strong> ise farklı saatlerde açılır;
+                                aşağıdan size uyanı seçebilirsiniz.
+                            </p>
+
+                            <div className="space-y-4">
+                                {plan.placements.filter(p => p.options.length > 0).map(p => (
+                                    <div key={p.courseCode} className="border border-gray-200 rounded-lg p-3">
+                                        <div className="flex flex-wrap items-baseline gap-2 mb-2">
+                                            <span className="font-mono font-medium">{p.courseCode}</span>
+                                            <span className="text-sm text-gray-600">{p.courseName}</span>
                                         </div>
-                                    ))}
+
+                                        {p.fixedSessions.length > 0 && (
+                                            <div className="mb-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1.5">
+                                                <span className="font-medium text-gray-700">Sabit teorik saat</span>
+                                                <span className="text-gray-500"> (tüm gruplar) — </span>
+                                                <span className="text-gray-700">{describeSessions(p.fixedSessions)}</span>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                            {p.options.map(o => {
+                                                const selected = o.group === p.chosenGroup;
+                                                return (
+                                                    <button
+                                                        key={o.group}
+                                                        type="button"
+                                                        onClick={() => setGroupChoices(prev => ({ ...prev, [p.courseCode]: o.group }))}
+                                                        className={`text-left px-2.5 py-2 rounded border text-xs transition-colors ${
+                                                            selected
+                                                                ? 'border-indigo-500 bg-indigo-50'
+                                                                : o.available
+                                                                    ? 'border-gray-200 hover:bg-gray-50'
+                                                                    : 'border-red-200 bg-red-50 opacity-80'
+                                                        }`}
+                                                    >
+                                                        <span className="flex items-center gap-1.5 font-medium">
+                                                            {o.groups.length > 1
+                                                                ? `${o.groups.join(', ')} grupları`
+                                                                : `${o.groups[0]} grubu`}
+                                                            <span className="text-[10px] px-1 rounded bg-gray-200 text-gray-700">
+                                                                {o.type === 'lab' ? 'Lab' : 'Şube'}
+                                                            </span>
+                                                            {selected && <span className="text-indigo-700">✓ seçili</span>}
+                                                        </span>
+                                                        <span className="block text-gray-600 mt-0.5">{o.label}</span>
+                                                        {!o.available && (
+                                                            <span className="block text-red-700 mt-0.5">
+                                                                {o.conflictsWith.join(', ')} ile çakışıyor
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <p className="text-xs text-gray-500 mt-2">{p.message}</p>
+                                    </div>
+                                ))}
                             </div>
+                        </div>
+                    )}
+
+                    {/* ---- Öncelik sırası ve yerleşim durumu ---- */}
+                    {selected.length > 0 && (
+                        <div className="bg-white rounded-lg shadow-md p-4">
+                            <h4 className="font-medium text-gray-800 mb-1">Yerleşim sırası</h4>
+                            <p className="text-xs text-gray-500 mb-3">
+                                Dersler yönetmelik önceliğine göre yerleştirilir: önce tekrar edilmesi
+                                zorunlu dersler (FF/YZ/DZ — Madde 19/5), sonra akademik yetersizlik
+                                kapsamındakiler (Madde 19/6), en son normal akış. Her grupta yarıyılı
+                                en küçük olan ders önce gelir. Yüksek öncelikli ders yeri önce
+                                kaptığı için, saat ya da AKTS kotası yetmediğinde eksik kalan her
+                                zaman düşük öncelikli ders olur.
+                            </p>
+
+                            <div className="space-y-1.5">
+                                {plan.placements.map(p => {
+                                    const tone =
+                                        p.status === 'placed' || p.status === 'needs_choice'
+                                            ? 'border-gray-200'
+                                            : p.status === 'displaced' || p.status === 'ects_limit'
+                                                ? 'border-amber-300 bg-amber-50'
+                                                : 'border-red-300 bg-red-50';
+                                    const badge =
+                                        p.priority === 1 ? 'bg-red-100 text-red-800'
+                                            : p.priority === 2 ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-gray-100 text-gray-700';
+                                    return (
+                                        <div key={p.courseCode} className={`border rounded p-2 text-sm ${tone}`}>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-mono font-medium">{p.courseCode}</span>
+                                                <span className={`text-xs px-1.5 py-0.5 rounded ${badge}`}>
+                                                    {p.priority === 1 ? 'Zorunlu tekrar'
+                                                        : p.priority === 2 ? 'Yetersizlik tekrarı' : 'Normal akış'}
+                                                </span>
+                                                {p.planSemester && (
+                                                    <span className="text-xs text-gray-500">{p.planSemester}. yarıyıl</span>
+                                                )}
+                                                {p.ects > 0 && <span className="text-xs text-gray-500">{p.ects} AKTS</span>}
+                                                <span className="text-xs text-gray-400 ml-auto">{p.regulation}</span>
+                                            </div>
+                                            <p className={`text-xs mt-1 ${
+                                                p.status === 'placed' || p.status === 'needs_choice'
+                                                    ? 'text-gray-500' : 'text-gray-700'
+                                            }`}>
+                                                {p.message}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {plan.notes.length > 0 && (
+                                <ul className="mt-3 space-y-1 text-xs text-gray-600">
+                                    {plan.notes.map((n, i) => <li key={i}>• {n}</li>)}
+                                </ul>
+                            )}
                         </div>
                     )}
 

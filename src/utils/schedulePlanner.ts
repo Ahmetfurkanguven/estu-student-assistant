@@ -4,15 +4,23 @@ import { detectScheduleConflicts, type ScheduleConflict } from './scheduleUtils'
 /**
  * Ders programı oluşturucu.
  *
- * Bir dersin programdaki kaydı tek parça değildir:
+ * Bir dersin programdaki kaydı tek parça değildir ve parçaların BAĞLAYICILIĞI
+ * farklıdır. Bu ayrım programın tamamının doğruluğunu belirler:
  *
- *   EEM206 Electrical Circuits Lab. (Class - All Groups)  E 6   ← herkese teorik
- *   EEM206 Elect. Circ. Lab. (A)                          Lab   ← A grubu lab
- *   EEM206 Elect. Circ. Lab. (B)                          Lab   ← B grubu lab
+ *   EEM206 Electrical Circuits Lab. (Class - All Groups)  E 6   ← SABİT
+ *   EEM206 Elect. Circ. Lab. (A)                          Lab   ← SEÇENEK
+ *   EEM206 Elect. Circ. Lab. (B)                          Lab   ← SEÇENEK
  *
- * Öğrenci teorik oturumu ZORUNLU olarak alır, laboratuvarın ise yalnızca KENDİ
- * grubunu alır. Bu ayrım yapılmazsa hem sahte çakışma çıkar hem de program
- * anlamsız şişer.
+ * SABİT oturumlar — "Class - All Groups", "All Class", "tüm gruplar/sınıflar"
+ * diye işaretlenen teorik saatlerdir. Dersi alan HERKES aynı saatte bulunur;
+ * öğrencinin seçme hakkı yoktur. Ders programa giriyorsa bu saat de girmek
+ * ZORUNDADIR. Bu saat başka bir dersle çakışıyorsa iki ders birlikte alınamaz.
+ *
+ * SEÇENEK oturumlar — laboratuvar grupları ve grup bazlı şubelerdir. Aynı ders
+ * için birden çok saat sunulur; öğrenci bunlardan BİRİNİ seçer. Burada esneklik
+ * vardır: bir grup doluysa/çakışıyorsa diğerine geçilebilir. Bu yüzden motor
+ * seçeneklerin HEPSİNİ değerlendirir, uygun olanı seçer ve diğerlerini de
+ * uygunluk durumlarıyla birlikte döndürür — öğrenci kendi tercihini yapabilsin.
  */
 
 export interface CourseOfferingGroup {
@@ -69,34 +77,116 @@ export function groupOfferings(offerings: ParsedOffering[]): Map<string, CourseO
 // Otomatik yerleştirme
 // ---------------------------------------------------------------------------
 
+/**
+ * Programa girmesi istenen bir ders ve yönetmelikteki önceliği.
+ *
+ * Öncelik sırası Madde 19/5 ve 19/6'dan gelir:
+ *   1 — FF/YZ/DZ zorunlu tekrarı        ("tekrar almak zorundadır")
+ *   2 — akademik yetersizlik tekrarı     (CC altı, Madde 19/6 3. aşama)
+ *   3 — normal akış (ders planı dersi)
+ *
+ * Her iki madde de "yarıyılı EN KÜÇÜK olandan başlayarak" der; bu yüzden aynı
+ * öncelik içinde `planSemester` küçük olan önce yerleştirilir.
+ */
+export interface PlanCourseRequest {
+    courseCode: string;
+    courseName?: string;
+    priority: 1 | 2 | 3;
+    planSemester: number | null;
+    ects: number;
+    reason: string;
+    regulation: string;
+}
+
 export interface PlanRequest {
-    /** Programa girmesi istenen ders kodları (öncelik sırasıyla). */
-    courseCodes: string[];
+    /** Öncelik bilgisiyle birlikte dersler. */
+    courses?: PlanCourseRequest[];
+    /** Kısayol: yalnızca kod verilirse hepsi "normal akış" sayılır. */
+    courseCodes?: string[];
     offerings: ParsedOffering[];
     /** Öğrencinin şube/grup harfi (ör. "A"). Bilinmiyorsa null. */
     preferredGroup?: string | null;
     /** Ders bazında elle seçilmiş grup: { EEM206: "C" } */
     groupChoices?: Record<string, string>;
+    /** Madde 10/2 dönem AKTS üst sınırı. Verilmezse sınır uygulanmaz. */
+    ectsLimit?: number;
 }
 
 export type PlacementStatus =
     | 'placed'          // tamamı yerleşti
     | 'needs_choice'    // grup seçimi bekliyor
     | 'conflict'        // çakışma nedeniyle yerleşemedi
+    | 'displaced'       // daha yüksek öncelikli bir ders için programdan çıkarıldı
+    | 'ects_limit'      // AKTS sınırına sığmadı
     | 'not_offered';    // bu dönem programda yok
+
+/** Öğrencinin seçebileceği bir grup/şube ve o seçeneğin uygunluğu. */
+export interface GroupOption {
+    /** Seçim anahtarı — bu seçeneği temsil eden grup harfi. */
+    group: string;
+    /**
+     * Bu oturumu PAYLAŞAN tüm gruplar.
+     *
+     * "(Class-A-E Groups)" gibi bir kayıt A'dan E'ye beş grubu aynı saatte
+     * toplar; bu bir seçenek değil, o grupların ortak saatidir. Aynı saate
+     * düşen gruplar tek seçenekte birleştirilir — aksi hâlde arayüzde aynı
+     * saatin beş kez tekrarlandığı anlamsız bir liste çıkıyordu.
+     */
+    groups: string[];
+    sessions: ParsedOffering[];
+    /** "Pzt 14:00-16:00 · Lab" gibi okunur özet. */
+    label: string;
+    type: 'lecture' | 'lab';
+    /** Programın geri kalanıyla çakışmıyor mu. */
+    available: boolean;
+    /** Çakışıyorsa hangi derslerle. */
+    conflictsWith: string[];
+}
+
+export type ConflictKind =
+    | 'sabit'   // herkesin aldığı teorik saat çakışıyor — esneklik yok
+    | 'grup';   // teorik uygun ama hiçbir grup seçeneği boş değil
 
 export interface CoursePlacement {
     courseCode: string;
     courseName: string;
     status: PlacementStatus;
-    /** Programa eklenen oturumlar. */
+    priority: 1 | 2 | 3;
+    planSemester: number | null;
+    ects: number;
+    /** Neden bu listede — yönetmelik gerekçesi. */
+    reason: string;
+    regulation: string;
+    /** Programa eklenen oturumlar (sabit + seçilen grup). */
     sessions: ParsedOffering[];
+    /** Herkesin aldığı, seçim gerektirmeyen teorik oturumlar. */
+    fixedSessions: ParsedOffering[];
+    /** Seçime açık gruplar — hepsi, uygunluk durumlarıyla. */
+    options: GroupOption[];
     /** Seçilen grup (varsa). */
     chosenGroup: string | null;
     availableGroups: string[];
     /** Çakışma varsa hangi derslerle. */
     conflictsWith: string[];
+    /** Çakışma sabit saatten mi grup seçeneklerinden mi kaynaklanıyor. */
+    conflictKind: ConflictKind | null;
     message: string;
+}
+
+const DAY_SHORT: Record<string, string> = {
+    'Pazartesi': 'Pzt', 'Salı': 'Sal', 'Çarşamba': 'Çar',
+    'Perşembe': 'Per', 'Cuma': 'Cum', 'Cumartesi': 'Cmt', 'Pazar': 'Paz'
+};
+
+/** "Pzt 14:00-16:00, Çar 09:00-11:00 · Lab" */
+export function describeSessions(sessions: ParsedOffering[]): string {
+    if (!sessions.length) return '—';
+    const times = sessions
+        .filter(s => !s.async)
+        .map(s => `${DAY_SHORT[s.day] ?? s.day} ${s.startTime}-${s.endTime}`);
+    if (sessions.some(s => s.async)) times.push('Asenkron');
+    const rooms = [...new Set(sessions.map(s => s.room).filter(Boolean))];
+    return times.join(', ') + (rooms.length ? ` · ${rooms.join('/')}` : '');
 }
 
 export interface SchedulePlan {
@@ -106,7 +196,18 @@ export interface SchedulePlan {
     conflicts: ScheduleConflict[];
     /** Grup seçimi bekleyen dersler. */
     pendingChoices: CoursePlacement[];
+    /** Yerleşen derslerin toplam AKTS'i. */
+    totalEcts: number;
+    ectsLimit: number | null;
+    /** Kullanıcıya gösterilecek, madde referanslı açıklamalar. */
+    notes: string[];
 }
+
+const PRIORITY_LABEL: Record<1 | 2 | 3, string> = {
+    1: 'zorunlu tekrar',
+    2: 'yetersizlik tekrarı',
+    3: 'normal akış'
+};
 
 function wouldConflict(existing: ParsedOffering[], additions: ParsedOffering[]): string[] {
     const conflicts = detectScheduleConflicts([...existing, ...additions]);
@@ -123,101 +224,246 @@ function wouldConflict(existing: ParsedOffering[], additions: ParsedOffering[]):
 }
 
 /**
- * İstenen dersleri sırayla programa yerleştirir.
+ * İstenen dersleri YÖNETMELİK ÖNCELİĞİNE göre programa yerleştirir.
  *
- * Her ders için:
- *   1. Tüm gruplara açık (teorik) oturumlar koşulsuz eklenir.
- *   2. Grup gerektiren oturumlarda önce elle seçim, sonra tercih edilen grup,
- *      sonra çakışmayan ilk grup denenir.
+ * Sıra: önce öncelik (zorunlu tekrar → yetersizlik tekrarı → normal akış),
+ * aynı öncelikte "yarıyılı en küçük olandan başlayarak" (Madde 19/5, 19/6).
+ *
+ * Yerleştirme sırası önemlidir çünkü ilk gelen yeri kapar. Bu yüzden düşük
+ * öncelikli bir ders, sonradan gelen ZORUNLU bir tekrarla çakışırsa programdan
+ * ÇIKARILIR — tekrar alınması yönetmelik gereği zorunlu, diğeri değil. Aynı
+ * kural AKTS sınırı için de geçerlidir (Madde 10/2).
  */
 export function buildSchedulePlan(request: PlanRequest): SchedulePlan {
     const grouped = groupOfferings(request.offerings);
-    const placements: CoursePlacement[] = [];
-    const accepted: ParsedOffering[] = [];
+    const ectsLimit = request.ectsLimit ?? null;
+    const notes: string[] = [];
 
-    for (const rawCode of request.courseCodes) {
-        const code = rawCode.trim().toUpperCase();
+    const requested: PlanCourseRequest[] = request.courses ?? (request.courseCodes ?? []).map(code => ({
+        courseCode: code,
+        priority: 3 as const,
+        planSemester: null,
+        ects: 0,
+        reason: 'Seçildi',
+        regulation: '—'
+    }));
+
+    // Madde 19/5 & 19/6: öncelik, sonra yarıyılı en küçük olan.
+    //
+    // Sıralama YERLEŞTİRME SIRASINI belirler ve yönetmeliğin asıl karşılığıdır:
+    // yüksek öncelikli ders yeri önce kaptığı için, kıt kaynak (saat aralığı ya
+    // da AKTS kotası) her zaman tekrar edilmesi zorunlu derse gider. Eşit
+    // öncelik ve yarıyılda çağıranın verdiği sıra korunur.
+    const ordered = requested
+        .map((course, index) => ({ course, index }))
+        .sort((a, b) => {
+            if (a.course.priority !== b.course.priority) return a.course.priority - b.course.priority;
+            const sa = a.course.planSemester ?? Number.MAX_SAFE_INTEGER;
+            const sb = b.course.planSemester ?? Number.MAX_SAFE_INTEGER;
+            if (sa !== sb) return sa - sb;
+            return a.index - b.index;
+        })
+        .map(x => x.course);
+
+    const placements = new Map<string, CoursePlacement>();
+    const accepted: ParsedOffering[] = [];
+    let totalEcts = 0;
+
+    for (const req of ordered) {
+        const code = req.courseCode.trim().toUpperCase();
         const entry = grouped.get(code);
+        const base = {
+            courseCode: code,
+            courseName: entry?.courseName || req.courseName || code,
+            priority: req.priority,
+            planSemester: req.planSemester,
+            ects: req.ects,
+            reason: req.reason,
+            regulation: req.regulation,
+            availableGroups: entry?.availableGroups ?? []
+        };
 
         if (!entry) {
-            placements.push({
-                courseCode: code, courseName: code, status: 'not_offered',
-                sessions: [], chosenGroup: null, availableGroups: [], conflictsWith: [],
-                message: 'Bu dönemin yüklenen programında açılmamış görünüyor.'
+            placements.set(code, {
+                ...base, status: 'not_offered', sessions: [], fixedSessions: [], options: [],
+                chosenGroup: null, conflictsWith: [], conflictKind: null,
+                message: req.priority < 3
+                    ? 'Bu dönem açılmamış. Madde 19/5 uyarınca kendi dönemi dışında açılırsa talep ederek alabilirsiniz.'
+                    : 'Bu dönemin yüklenen programında açılmamış görünüyor.'
             });
             continue;
         }
 
-        // 1) Teorik (tüm gruplar) oturumları
-        const sessions: ParsedOffering[] = [...entry.plenary];
+        // --- 1) SABİT oturumlar: herkesin aldığı teorik saat ---
+        //
+        // Seçim hakkı yok. Ders alınıyorsa bu saat de alınır. Bu yüzden önce
+        // bunu sınarız: çakışıyorsa dersin hiçbir grup seçeneği kurtaramaz.
+        const fixedSessions: ParsedOffering[] = [...entry.plenary];
+        const fixedBlocking = wouldConflict(accepted, fixedSessions);
 
-        // 2) Grup gerektiren oturumlar
+        if (fixedBlocking.length > 0) {
+            const blockers = fixedBlocking.map(c => placements.get(c))
+                .filter((p): p is CoursePlacement => !!p);
+            placements.set(code, {
+                ...base, status: 'conflict', sessions: [], fixedSessions, options: [],
+                chosenGroup: null, conflictsWith: fixedBlocking, conflictKind: 'sabit',
+                message:
+                    `Herkesin aldığı teorik saati ${fixedBlocking.join(', ')} ile çakışıyor ` +
+                    `(${describeSessions(fixedSessions)}). Bu saat tüm gruplar için ortaktır, ` +
+                    'değiştirilemez — iki ders aynı dönemde birlikte alınamaz. ' +
+                    (req.priority < 3 && blockers.some(p => p.priority < 3)
+                        ? 'İkisi de tekrar kapsamında; danışmanınıza bildirin.'
+                        : 'Çakıştığı dersi listeden çıkarıp tekrar deneyin.')
+            });
+            continue;
+        }
+
+        // --- 2) SEÇENEK oturumlar: grup/şube — burada esneklik var ---
+        //
+        // Her seçeneğin uygunluğunu ayrı ayrı hesapla ve HEPSİNİ döndür;
+        // öğrenci hangi grupları alabildiğini görebilsin.
+        const withFixed = accepted.concat(fixedSessions);
+
+        // Aynı saat/oturum kümesine düşen grupları TEK seçenekte birleştir.
+        const bySignature = new Map<string, { groups: string[]; sessions: ParsedOffering[] }>();
+        for (const group of entry.availableGroups) {
+            const groupSessions = entry.byGroup.get(group)!;
+            const signature = groupSessions
+                .map(s => `${s.day}|${s.startTime}|${s.endTime}|${s.type}|${s.room ?? ''}`)
+                .sort()
+                .join(';');
+            if (!bySignature.has(signature)) bySignature.set(signature, { groups: [], sessions: groupSessions });
+            bySignature.get(signature)!.groups.push(group);
+        }
+
+        const options: GroupOption[] = [...bySignature.values()].map(({ groups, sessions: groupSessions }) => {
+            const clash = wouldConflict(withFixed, groupSessions);
+            return {
+                group: groups[0],
+                groups,
+                sessions: groupSessions,
+                label: describeSessions(groupSessions),
+                type: groupSessions.some(s => s.type === 'lab') ? 'lab' as const : 'lecture' as const,
+                available: clash.length === 0,
+                conflictsWith: clash
+            };
+        });
+
         let chosenGroup: string | null = null;
         const manual = request.groupChoices?.[code];
 
-        if (entry.availableGroups.length > 0) {
-            const order = [
-                manual,
-                request.preferredGroup ?? undefined,
-                ...entry.availableGroups
-            ].filter((g): g is string => !!g && entry.byGroup.has(g));
+        if (options.length > 0) {
+            // Sıra: elle seçim → öğrencinin şubesi → çakışmayan ilk seçenek.
+            // Grup harfi birleştirilmiş bir seçeneğin İÇİNDE olabilir.
+            const optionContaining = (g: string) => options.find(o => o.groups.includes(g));
 
-            for (const group of order) {
-                const groupSessions = entry.byGroup.get(group)!;
-                const blamed = wouldConflict(accepted.concat(sessions), groupSessions);
-                if (blamed.length === 0) {
-                    chosenGroup = group;
-                    sessions.push(...groupSessions);
-                    break;
-                }
+            const manualOption = manual ? optionContaining(manual) : undefined;
+            const preferredOption = request.preferredGroup ? optionContaining(request.preferredGroup) : undefined;
+
+            if (manualOption) {
+                // Elle seçim çakışsa bile öğrencinin tercihine saygı göster;
+                // uyarıyı mesajda ver.
+                chosenGroup = manualOption.group;
+            } else if (preferredOption?.available) {
+                chosenGroup = preferredOption.group;
+            } else {
+                chosenGroup = options.find(o => o.available)?.group ?? null;
             }
 
             if (!chosenGroup) {
-                const blamed = wouldConflict(
-                    accepted.concat(sessions),
-                    entry.byGroup.get(entry.availableGroups[0])!
-                );
-                placements.push({
-                    courseCode: code, courseName: entry.courseName, status: 'conflict',
-                    sessions: [], chosenGroup: null,
-                    availableGroups: entry.availableGroups, conflictsWith: blamed,
-                    message: `Hiçbir grup çakışmasız yerleşmedi. Çakışan: ${blamed.join(', ') || '—'}`
+                placements.set(code, {
+                    ...base, status: 'conflict', sessions: [], fixedSessions, options,
+                    chosenGroup: null, conflictsWith: [...new Set(options.flatMap(o => o.conflictsWith))],
+                    conflictKind: 'grup',
+                    message:
+                        `Teorik saati uygun ama ${options.length} grubun hiçbiri boş değil. ` +
+                        'Çakışan dersi listeden çıkarırsanız gruplardan biri açılabilir.'
                 });
                 continue;
             }
         }
 
-        const blamed = wouldConflict(accepted, sessions);
-        if (blamed.length > 0) {
-            placements.push({
-                courseCode: code, courseName: entry.courseName, status: 'conflict',
-                sessions: [], chosenGroup,
-                availableGroups: entry.availableGroups, conflictsWith: blamed,
-                message: `Teorik saatler çakışıyor: ${blamed.join(', ')}`
+        const chosenOption = options.find(o => o.group === chosenGroup);
+        const sessions = [...fixedSessions, ...(chosenOption?.sessions ?? [])];
+
+        // --- AKTS sınırı (Madde 10/2) ---
+        if (ectsLimit !== null && totalEcts + req.ects > ectsLimit) {
+            const remaining = ectsLimit - totalEcts;
+            placements.set(code, {
+                ...base, status: 'ects_limit', sessions: [], fixedSessions, options,
+                chosenGroup, conflictsWith: [], conflictKind: null,
+                message:
+                    `${ectsLimit} AKTS sınırına sığmadı (Madde 10/2): bu ders ${req.ects} AKTS, ` +
+                    `geriye ${remaining.toFixed(1)} AKTS kaldı. ` +
+                    (req.priority < 3
+                        ? 'Tekrar kapsamında olduğu hâlde sığmıyor — daha düşük öncelikli bir dersi ' +
+                          'listeden çıkarın ya da danışmanınıza bildirin.'
+                        : 'Almak isterseniz listeden başka bir dersi çıkarın.')
             });
             continue;
         }
 
         accepted.push(...sessions);
-        placements.push({
-            courseCode: code,
-            courseName: entry.courseName,
-            status: entry.requiresGroupChoice && !manual ? 'needs_choice' : 'placed',
+        totalEcts += req.ects;
+
+        const usableOptions = options.filter(o => o.available || o.group === chosenGroup).length;
+        const groupsLabel = (o: GroupOption) =>
+            o.groups.length > 1 ? `${o.groups.join(', ')} grupları` : `${o.groups[0]} grubu`;
+
+        placements.set(code, {
+            ...base,
+            // Tek seçenek varsa gerçek bir seçim yoktur — o saat zaten ortaktır.
+            status: options.length > 1 && !manual ? 'needs_choice' : 'placed',
             sessions,
+            fixedSessions,
+            options,
             chosenGroup,
-            availableGroups: entry.availableGroups,
             conflictsWith: [],
-            message: chosenGroup
-                ? `${chosenGroup} grubu seçildi${entry.requiresGroupChoice && !manual ? ' (otomatik — değiştirebilirsiniz)' : ''}.`
-                : 'Tüm gruplara açık.'
+            conflictKind: null,
+            message: !options.length
+                ? `Tüm gruplara ortak teorik ders — ${describeSessions(fixedSessions)}. Seçim gerektirmez.`
+                : chosenOption && !chosenOption.available
+                    ? `${groupsLabel(chosenOption)} sizin seçiminiz ama ${chosenOption.conflictsWith.join(', ')} ile çakışıyor.`
+                    : options.length === 1 && chosenOption
+                        ? `${groupsLabel(chosenOption)} için tek saat açılmış — ${chosenOption.label}. Seçim gerektirmez.`
+                        : `${groupsLabel(chosenOption!)}${manual ? ' seçildi' : ' otomatik seçildi'} — ` +
+                          `${chosenOption?.label ?? ''}. ` +
+                          `${usableOptions}/${options.length} seçenek uygun${manual ? '' : ', değiştirebilirsiniz'}.`
         });
     }
 
+    const result = [...placements.values()];
+    const mandatoryUnplaced = result.filter(p => p.priority < 3 && p.status !== 'placed' && p.status !== 'needs_choice');
+
+    if (mandatoryUnplaced.length) {
+        notes.push(
+            `${mandatoryUnplaced.length} tekrar dersi programa yerleşemedi ` +
+            `(${mandatoryUnplaced.map(p => p.courseCode).join(', ')}). ` +
+            'Madde 19/5 uyarınca bu derslerin alınması zorunludur; danışmanınıza durumu bildirin.'
+        );
+    }
+    const displaced = result.filter(p => p.status === 'displaced');
+    if (displaced.length) {
+        notes.push(
+            `${displaced.length} ders, tekrar edilmesi zorunlu derslere yer açmak için programdan çıkarıldı ` +
+            `(${displaced.map(p => p.courseCode).join(', ')}). Tekrar dersleri yönetmelik gereği önceliklidir.`
+        );
+    }
+    if (ectsLimit !== null) {
+        notes.push(`Toplam ${totalEcts.toFixed(1)} / ${ectsLimit} AKTS (Madde 10/2).`);
+    }
+
     return {
-        placements,
+        placements: result.sort((a, b) =>
+            a.priority - b.priority ||
+            (a.planSemester ?? 99) - (b.planSemester ?? 99) ||
+            a.courseCode.localeCompare(b.courseCode, 'tr')),
         sessions: accepted,
         conflicts: detectScheduleConflicts(accepted),
-        pendingChoices: placements.filter(p => p.status === 'needs_choice')
+        pendingChoices: result.filter(p => p.status === 'needs_choice'),
+        totalEcts,
+        ectsLimit,
+        notes
     };
 }
 

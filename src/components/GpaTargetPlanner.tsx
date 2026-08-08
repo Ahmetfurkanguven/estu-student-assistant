@@ -3,8 +3,8 @@ import { Target, TrendingUp, AlertTriangle } from 'lucide-react';
 import type { TranscriptRecord } from '../utils/transcriptParser';
 import type { Course } from '../types';
 import {
-    computeBase, buildCandidates, projectCandidate, buildTargetPlan,
-    COEFFICIENT_GRADES, type TargetCandidate
+    computeBase, buildCandidates, projectCandidate, buildTargetPlans,
+    COEFFICIENT_GRADES, type TargetCandidate, type TargetPlan
 } from '../utils/gpaTarget';
 
 interface Props {
@@ -31,10 +31,12 @@ export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
         () => buildCandidates(records, { newCourses: includeNew ? newCourseOptions : [] }),
         [records, includeNew, newCourseOptions]
     );
-    const plan = useMemo(
-        () => buildTargetPlan(records, target, candidates),
+    const plans = useMemo(
+        () => buildTargetPlans(records, target, candidates),
         [records, target, candidates]
     );
+    const [activePlan, setActivePlan] = useState(0);
+    const plan: TargetPlan = plans[Math.min(activePlan, plans.length - 1)] ?? plans[0];
 
     if (!records.length) return null;
 
@@ -86,11 +88,47 @@ export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
                 </div>
             )}
 
+            {plans.length > 1 && (
+                <div className="mb-4">
+                    <p className="text-sm text-gray-600 mb-2">
+                        Hedefe ulaşmanın birden çok yolu var — size uyanı seçin:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                        {plans.map((p, i) => (
+                            <button
+                                key={p.strategy ?? i}
+                                type="button"
+                                onClick={() => setActivePlan(i)}
+                                className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                                    i === activePlan
+                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-900'
+                                        : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                <span className="font-medium block">{p.strategyLabel}</span>
+                                <span className="text-xs opacity-80">
+                                    {p.steps.length} ders · en zoru{' '}
+                                    {/* Adımlar arasında GEREKEN EN YÜKSEK not — planın zorluğu bu. */}
+                                    {p.steps.reduce((hardest, s) =>
+                                        s.requiredCoefficient > hardest.requiredCoefficient ? s : hardest,
+                                        p.steps[0]
+                                    )?.requiredGrade ?? '—'}
+                                    {!p.achievable && ' · hedefe ulaşmıyor'}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                    {plan.strategyNote && (
+                        <p className="mt-2 text-xs text-gray-500">{plan.strategyNote}</p>
+                    )}
+                </div>
+            )}
+
             {plan.steps.length > 0 && (
                 <>
                     <h4 className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                         <TrendingUp className="w-4 h-4" />
-                        En kısa yol — {plan.steps.length} ders
+                        {plan.strategyLabel ?? 'En kısa yol'} — {plan.steps.length} ders
                     </h4>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">

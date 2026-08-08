@@ -1688,6 +1688,7 @@ export default function App() {
               knownCourseCodes={profile?.courses.map(c => c.code) ?? []}
               proposal={proposal?.proposal ?? []}
               retakes={academicAnalysis?.retakes ?? []}
+              ectsLimit={proposal?.ectsLimit}
             />
 
             <div className="bg-white rounded-xl shadow-lg p-8">

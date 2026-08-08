@@ -181,7 +181,13 @@ export interface PlanStep {
     gnoAfter: number;
 }
 
+export type PlanStrategy = 'en-az-ders' | 'en-kolay-notlar' | 'sadece-tekrar' | 'en-dusuk-notlar';
+
 export interface TargetPlan {
+    /** Bu planın hangi yaklaşımla kurulduğu. */
+    strategy?: PlanStrategy;
+    strategyLabel?: string;
+    strategyNote?: string;
     target: number;
     currentGno: number;
     achievable: boolean;
@@ -202,11 +208,90 @@ export interface TargetPlan {
  * dersin notunu hedefi bozmadan düşürebildiğin kadar düşür — böylece
  * "en az hangi notu almalıyım" sorusunun cevabı çıkar.
  */
-export function buildTargetPlan(
+/**
+ * Hedefe ulaştıran BİRDEN ÇOK alternatif üretir.
+ *
+ * Tek bir "en kısa yol" çoğu zaman yeterli değildir: en verimli ders o dönem
+ * açılmamış olabilir, öğrenci o dersi tekrar almak istemeyebilir ya da daha
+ * çok derse yayıp her birinden daha düşük not hedeflemeyi tercih edebilir.
+ * Bu yüzden farklı yaklaşımlarla kurulmuş planlar döner; aynı sonuca çıkanlar
+ * elenir.
+ */
+export function buildTargetPlans(
     records: TranscriptRecord[],
     target: number,
     candidates: TargetCandidate[],
     options: { maxCourses?: number } = {}
+): TargetPlan[] {
+    const strategies: Array<{
+        id: PlanStrategy; label: string; note: string;
+        pick: (all: TargetCandidate[]) => TargetCandidate[];
+        maxCourses?: number;
+    }> = [
+        {
+            id: 'en-az-ders',
+            label: 'En az ders',
+            note: 'Ortalamayı en hızlı yükselten dersler. En az sayıda ders, ama her birinden yüksek not gerekir.',
+            pick: all => all
+        },
+        {
+            id: 'en-kolay-notlar',
+            label: 'Notlar daha düşük olsun',
+            note: 'Yük daha çok derse yayılır; her bir dersten beklenen not düşer, karşılığında ders sayısı artar.',
+            pick: all => all,
+            maxCourses: (options.maxCourses ?? 8) + 4
+        },
+        {
+            id: 'sadece-tekrar',
+            label: 'Sadece tekrar',
+            note: 'Yalnızca daha önce alınmış dersler. Yeni ders eklenmez; payda büyümez.',
+            pick: all => all.filter(c => c.kind === 'tekrar')
+        },
+        {
+            id: 'en-dusuk-notlar',
+            label: 'En düşük notlardan başla',
+            note: 'En zayıf notlu derslerden başlanır. Yükseltme payı en büyük olan dersler.',
+            pick: all => [...all].sort((a, b) =>
+                (a.currentCoefficient ?? 99) - (b.currentCoefficient ?? 99) || b.ects - a.ects)
+        }
+    ];
+
+    const plans: TargetPlan[] = [];
+    const seen = new Set<string>();
+
+    for (const s of strategies) {
+        const pool = s.pick(candidates);
+        if (!pool.length) continue;
+
+        const plan = buildTargetPlan(records, target, pool, {
+            maxCourses: s.maxCourses ?? options.maxCourses,
+            spread: s.id === 'en-kolay-notlar'
+        });
+
+        // Aynı ders kümesi + aynı notlar → yinelenen plan, gösterme.
+        const key = plan.steps.map(x => `${x.candidate.courseCode}:${x.requiredGrade}`).join('|');
+        if (!plan.steps.length || seen.has(key)) continue;
+        seen.add(key);
+
+        plans.push({ ...plan, strategy: s.id, strategyLabel: s.label, strategyNote: s.note });
+    }
+
+    // Hiçbiri hedefe ulaşmıyorsa yine de en iyisini göster.
+    if (!plans.length) {
+        const fallback = buildTargetPlan(records, target, candidates, options);
+        return [{ ...fallback, strategy: 'en-az-ders', strategyLabel: 'En az ders', strategyNote: '' }];
+    }
+
+    // Hedefe ulaşanlar önce, sonra az dersli olan.
+    return plans.sort((a, b) =>
+        Number(b.achievable) - Number(a.achievable) || a.steps.length - b.steps.length);
+}
+
+export function buildTargetPlan(
+    records: TranscriptRecord[],
+    target: number,
+    candidates: TargetCandidate[],
+    options: { maxCourses?: number; spread?: boolean } = {}
 ): TargetPlan {
     const base = computeBase(records);
     const currentGno = round2(base.gno);
@@ -226,12 +311,17 @@ export function buildTargetPlan(
     for (const c of candidates) ceiling = applyOne(ceiling, c, 4.0);
     const maxPossibleGno = round2(ceiling.gno);
 
-    // 1) Hedefe ulaşana kadar en verimli dersleri AA varsayımıyla ekle
+    // 1) Hedefe ulaşana kadar en verimli dersleri AA varsayımıyla ekle.
+    //
+    // `spread` açıkken hedefe ulaşıldıktan sonra da ders eklenmeye devam edilir:
+    // yük daha çok derse dağıldığı için 2. adımdaki not düşürme her dersten
+    // beklenen notu aşağı çeker. "Az ders ama yüksek not" yerine "çok ders ama
+    // düşük not" isteyen öğrenci için.
     const chosen: TargetCandidate[] = [];
     let running = base;
     for (const c of candidates) {
-        if (round2(running.gno) >= target) break;
         if (chosen.length >= maxCourses) break;
+        if (round2(running.gno) >= target && !options.spread) break;
         chosen.push(c);
         running = applyOne(running, c, 4.0);
     }

@@ -148,6 +148,8 @@ export interface RetakeItem {
     courseName: string;
     grade: string;
     semester: string;
+    /** Dersin AKTS kredisi — ders yükü hesabı için (Madde 10/2). */
+    ects: number;
     kind: RetakeKind;
     /** Ders planındaki yarıyıl — "yarıyılı en küçük olandan başlayarak" sıralaması için. */
     planSemester: number | null;
@@ -194,6 +196,7 @@ export function determineRetakes(
                 courseName: record.courseName || course?.name || record.courseCode,
                 grade: record.grade.letter,
                 semester: record.semester,
+                ects: record.ects,
                 kind: 'basarisiz',
                 planSemester,
                 isMandatoryCourse: mandatory,
@@ -217,6 +220,7 @@ export function determineRetakes(
             courseName: record.courseName || course?.name || record.courseCode,
             grade: record.grade.letter,
             semester: record.semester,
+            ects: record.ects,
             kind: 'cc_alti',
             planSemester,
             isMandatoryCourse: mandatory,
