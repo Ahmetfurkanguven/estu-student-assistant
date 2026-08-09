@@ -15,9 +15,16 @@ const STYLES = {
 } as const;
 
 /**
- * Okunamayan veya düşürülen her satırı gerekçesiyle gösterir.
- * Eski sürümde bu bilgiler yalnızca tarayıcı konsoluna yazılıyordu; kullanıcı
- * "0 ders okundu" uyarısını görüyor ama nedenini göremiyordu.
+ * Transkript okunurken DİKKAT GEREKTİREN bir şey olduysa gösterilir.
+ *
+ * Sorunsuz okumada hiç çıkmaz. Öğrencinin işi transkriptini yüklemek, parser'ın
+ * iç kararlarını denetlemek değil; her yüklemede tanı paneli göstermek gereksiz
+ * gürültü. Ama okuma HATALI olduğunda ortalama da yanlış çıkar — bunu sessizce
+ * geçmek çok daha kötüdür. Bu yüzden panel yalnızca hata ya da uyarı varken
+ * görünür.
+ *
+ * Ortalamadan düşürülen dersler (tekrar / yerine) yalnızca panel açıldığında,
+ * yani zaten bir sorun varken listelenir.
  */
 export function TranscriptDiagnostics({ diagnostics, superseded }: Props) {
     const [open, setOpen] = useState(false);
@@ -26,27 +33,38 @@ export function TranscriptDiagnostics({ diagnostics, superseded }: Props) {
     const warnings = diagnostics.filter(d => d.level === 'warning');
     const infos = diagnostics.filter(d => d.level === 'info');
 
-    if (!diagnostics.length && !superseded.length) return null;
+    // Sorunsuz okuma → kullanıcıya hiçbir şey gösterme.
+    if (!errors.length && !warnings.length) return null;
 
     const headline = errors.length
-        ? `${errors.length} hata, ${warnings.length} uyarı`
-        : warnings.length
-            ? `${warnings.length} uyarı, ${superseded.length} ders ortalamadan düşürüldü`
-            : `${superseded.length} ders ortalamadan düşürüldü, ${infos.length} not`;
+        ? `${errors.length} satır okunamadı`
+        : `${warnings.length} nokta kontrol edilmeli`;
 
     return (
-        <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+        <div className={`rounded-lg shadow-md p-4 mb-4 border ${
+            errors.length ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+        }`}>
             <button
                 type="button"
                 onClick={() => setOpen(o => !o)}
                 className="w-full flex items-center justify-between text-left"
             >
-                <span className="font-semibold text-gray-800">🔍 Okuma raporu</span>
-                <span className="flex items-center gap-2 text-sm text-gray-600">
+                <span className={`font-semibold ${errors.length ? 'text-red-900' : 'text-amber-900'}`}>
+                    {errors.length
+                        ? 'Transkriptin bir kısmı okunamadı'
+                        : 'Transkriptinizde kontrol etmeniz gereken noktalar var'}
+                </span>
+                <span className={`flex items-center gap-2 text-sm ${errors.length ? 'text-red-800' : 'text-amber-800'}`}>
                     {headline}
                     {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </span>
             </button>
+
+            {!open && (
+                <p className={`mt-1 text-sm ${errors.length ? 'text-red-800' : 'text-amber-800'}`}>
+                    Ayrıntı için tıklayın — hangi satırın nasıl okunduğunu görebilirsiniz.
+                </p>
+            )}
 
             {open && (
                 <div className="mt-4 space-y-4">
