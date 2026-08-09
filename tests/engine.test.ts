@@ -9,7 +9,7 @@ import { parseTranscript, buildLinesFromPdfItems } from '../src/utils/transcript
 import type { TranscriptRecord } from '../src/utils/transcriptParser';
 import { resolveRecords, calculateGpa, buildSemesterHistory, compareSemesters } from '../src/utils/gpaCalculator';
 import { assessAcademicStanding, determineRetakes, getEctsLimit } from '../src/utils/repeatRules';
-import { generateCourseProposal, checkPrerequisites } from '../src/utils/courseSelectionRules';
+import { generateCourseProposal, checkPrerequisites, checkGraduationProjectEligibility } from '../src/utils/courseSelectionRules';
 import { validateProfile } from '../src/utils/departmentRegistry';
 import { GRADES } from '../src/data/gradeSystem';
 import { computeBase, buildCandidates, projectCandidate, buildTargetPlan, buildTargetPlans, suggestTarget, TARGET_THRESHOLDS } from '../src/utils/gpaTarget';
@@ -758,6 +758,36 @@ check('AA alınan ders normalde aday değil',
     !buildCandidates(aaRecords).some(c => c.courseCode === 'MAT1011'));
 check('kullanıcı uyguladıysa aday listesinde kalır',
     buildCandidates(aaRecords, { alwaysInclude: ['MAT1011'] }).some(c => c.courseCode === 'MAT1011'));
+
+// --- Bitirme projesi: 180 AKTS BAŞARILMIŞ olmalı (Madde 8/4) ---
+//
+// "en az 180 AKTS kredilik dersi BAŞARMIŞ olması" — alınan değil başarılan.
+// Kalınan dersler ilerleme sayılmaz.
+{
+    // Ders kodu kalıbı en az 2 harf + 2 rakam ister.
+    const gecti = (n: number) => Array.from({ length: n }, (_, i) =>
+        `ABC${String(i).padStart(3, '0')}  Gecilen Ders ${i}  6.0  BB  18.00  Z`).join('\n');
+    const kaldi = (n: number) => Array.from({ length: n }, (_, i) =>
+        `XYZ${String(i).padStart(3, '0')}  Kalinan Ders ${i}  6.0  FF  0.00  Z`).join('\n');
+
+    // 20 ders × 6 AKTS = 120 başarılı, 20 ders × 6 = 120 başarısız → toplam 240 alınmış
+    const karma = parseTranscript(`2023-2024 Güz Dönemi\n${gecti(20)}\n${kaldi(20)}`).records;
+    const karmaGpa = calculateGpa(resolveRecords(karma).active);
+    eq('başarılan AKTS yalnızca geçilenleri sayar', karmaGpa.earnedEcts, 120);
+    eq('alınan AKTS toplamı ayrı tutulur', karmaGpa.attemptedEcts, 240);
+
+    const bosProfil = { ...profile, courses: profile.courses, graduationProject: { codes: ['EEM413'], minEctsAlternative: 180 } };
+    const az = checkGraduationProjectEligibility(bosProfil as any, karma, karmaGpa.earnedEcts);
+    check('240 alınmış ama 120 başarılmışsa bitirme projesi açılmaz',
+        !az.eligible, `earned ${karmaGpa.earnedEcts}`);
+
+    // 30 ders × 6 = 180 başarılı
+    const yeterli = parseTranscript(`2023-2024 Güz Dönemi\n${gecti(30)}`).records;
+    const yeterliGpa = calculateGpa(resolveRecords(yeterli).active);
+    eq('180 AKTS başarıldı', yeterliGpa.earnedEcts, 180);
+    check('180 başarılmışsa bitirme projesi açılır',
+        checkGraduationProjectEligibility(bosProfil as any, yeterli, yeterliGpa.earnedEcts).eligible);
+}
 
 // --- Otomatik hedef önerisi ---
 //

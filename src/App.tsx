@@ -316,8 +316,14 @@ function calculateGPA(records: StudentRecord[]): GPAResult {
       totalCredits += record.credits;
       usedCourses.push(record);
     }
-    totalECTS += record.ects;
+    // AKTS ilerlemesi yalnızca BAŞARILAN derslerden sayılır.
+    //
+    // Madde 8/4 bitirme projesi için "en az 180 AKTS kredilik dersi BAŞARMIŞ
+    // olması" der; Madde 25/1 mezuniyet için "240 AKTS kredilik dersi
+    // BAŞARIYLA tamamlayan" der. Alınan (denenen) AKTS'yi saymak, kaldığı
+    // dersleri de ilerleme gibi gösteriyordu.
     if (record.grade.passed) {
+      totalECTS += record.ects;
       passedCredits += record.credits;
     }
   }
@@ -395,13 +401,10 @@ function checkGraduationProjectEligibility(records: StudentRecord[], gpa: GPARes
   // 3. Eksikleri bul
   const missingCourses = firstFourSemesterCourses.filter(code => !completedSet.has(code.trim().toUpperCase()));
 
-  // DEBUG LOG
-  console.log('Zorunlu Dersler:', firstFourSemesterCourses);
-  console.log('Geçilenler (After Intibak):', Array.from(completedSet));
-  console.log('Eksikler:', missingCourses);
-
-  // KURAL KONTROLÜ
-  // Eğer (Eksik Ders > 0) VE (AKTS < 180) -> ELIGIBLE DEĞİL
+  // Madde 8/4: "ilk dört yarıyıldaki tüm zorunlu derslerini BAŞARMIŞ olması
+  // VEYA en az 180 AKTS kredilik dersi BAŞARMIŞ olması" — iki koşuldan biri
+  // yeterlidir. Buradaki 180, alınan değil BAŞARILAN AKTS'dir; gpa.totalECTS
+  // yalnızca geçilen dersleri toplar.
   if (missingCourses.length > 0 && gpa.totalECTS < 180) {
     reasons.push('Bu dersi almak için EN AZ BİR koşulu sağlamanız gerekir:');
     reasons.push('1. İlk 4 yarıyılın zorunlu derslerini tamamlamak (Eksikleriniz var)');
@@ -975,7 +978,7 @@ export default function App() {
                   generateAcademicReport({
                     studentName: 'Öğrenci',
                     studentId: '123456789',
-                    department: 'Elektrik-Elektronik Mühendisliği',
+                    department: profile?.name ?? 'Belirtilmemiş',
                     gpa: gpa,
                     // Sadece sonradan geçilmemiş olan başarısız dersleri listele
                     failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
@@ -1700,7 +1703,7 @@ export default function App() {
                       generateAcademicReport({
                         studentName: 'Öğrenci',
                         studentId: '123456789',
-                        department: 'Elektrik-Elektronik Mühendisliği',
+                        department: profile?.name ?? 'Belirtilmemiş',
                         gpa: gpa,
                         failedCourses: records.filter(r => !r.grade.passed && !passedCodes.has(r.courseCode)),
                         allRecords: records,

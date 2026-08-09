@@ -96,9 +96,12 @@ export const generateAcademicReport = (data: ReportData) => {
         // --- 1. STUDENT INFO ---
         addSubtitle('1. OGRENCI BILGILERI');
 
-        addText(`Bolum: Elektrik-Elektronik Muhendisligi`);
+        // Bölüm adı sabit yazılıydı; uygulama çok bölümlü hâle geldiği hâlde
+        // rapor her öğrenciye "Elektrik-Elektronik Muhendisligi" yazıyordu.
+        addText(`Bolum: ${cleanText(data.department || 'Belirtilmemis')}`);
         addText(`Mevcut GNO: ${data.gpa.gno.toFixed(2)}`, 20, 10, true);
-        addText(`Toplam AKTS: ${data.gpa.totalECTS.toFixed(1)}`);
+        // Madde 25/1: mezuniyet için BAŞARILAN AKTS esastır.
+        addText(`Basarilan AKTS: ${data.gpa.totalECTS.toFixed(1)}`);
 
         const successRate = data.gpa.totalAttempted > 0
             ? Math.round((data.gpa.passedCredits / data.gpa.totalAttempted) * 100)
