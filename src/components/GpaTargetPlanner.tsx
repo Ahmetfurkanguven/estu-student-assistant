@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Target, TrendingUp, AlertTriangle } from 'lucide-react';
-import type { TranscriptRecord } from '../utils/transcriptParser';
+import type { StudentRecord } from '../types';
 import type { Course } from '../types';
 import {
     computeBase, buildCandidates, projectCandidate, buildTargetPlans,
@@ -8,9 +8,19 @@ import {
 } from '../utils/gpaTarget';
 
 interface Props {
-    records: TranscriptRecord[];
+    records: StudentRecord[];
     /** Bölüm profilinden, henüz alınmamış dersler (yeni ders seçeneği için). */
     newCourseOptions?: Course[];
+    /**
+     * Not kutusuna tıklanınca senaryoya uygular.
+     *
+     * Buradaki tablo zaten "bu dersten şu notu alırsam GNO ne olur" sorusunu
+     * yanıtlıyor; aynı kutuya tıklayıp senaryoya eklemek, listede zaten duran
+     * bir dersi ayrıca elle girmeyi gereksiz kılar.
+     */
+    onApplyGrade?: (courseCode: string, grade: string) => void;
+    /** Senaryoda o an geçerli olan notlar — seçili kutuyu işaretlemek için. */
+    currentGrades?: Record<string, string>;
 }
 
 /**
@@ -21,15 +31,20 @@ interface Props {
  *      en az hangi notu almalıyım?  → plan
  *   2. Şu dersi bu dönem alırsam hangi not bana ne kazandırır? → not tablosu
  */
-export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
+export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade, currentGrades }: Props) {
     const [target, setTarget] = useState(2.5);
     const [includeNew, setIncludeNew] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
 
     const base = useMemo(() => computeBase(records), [records]);
     const candidates = useMemo(
-        () => buildCandidates(records, { newCourses: includeNew ? newCourseOptions : [] }),
-        [records, includeNew, newCourseOptions]
+        () => buildCandidates(records, {
+            newCourses: includeNew ? newCourseOptions : [],
+            // Kullanıcının senaryoda uyguladığı dersler, AA verilse bile
+            // listede kalsın — seçimini değiştirebilsin.
+            alwaysInclude: Object.keys(currentGrades ?? {})
+        }),
+        [records, includeNew, newCourseOptions, currentGrades]
     );
     const plans = useMemo(
         () => buildTargetPlans(records, target, candidates),
@@ -186,6 +201,8 @@ export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
                             target={target}
                             open={expanded === candidate.courseCode}
                             onToggle={() => setExpanded(expanded === candidate.courseCode ? null : candidate.courseCode)}
+                            onApplyGrade={onApplyGrade}
+                            appliedGrade={currentGrades?.[candidate.courseCode.toUpperCase()]}
                         />
                     ))}
                 </div>
@@ -195,13 +212,15 @@ export function GpaTargetPlanner({ records, newCourseOptions = [] }: Props) {
 }
 
 function CandidateRow({
-    candidate, base, target, open, onToggle
+    candidate, base, target, open, onToggle, onApplyGrade, appliedGrade
 }: {
     candidate: TargetCandidate;
     base: ReturnType<typeof computeBase>;
     target: number;
     open: boolean;
     onToggle: () => void;
+    onApplyGrade?: (courseCode: string, grade: string) => void;
+    appliedGrade?: string;
 }) {
     const projection = useMemo(() => projectCandidate(base, candidate, target), [base, candidate, target]);
 
@@ -223,23 +242,37 @@ function CandidateRow({
             {open && (
                 <div className="px-3 pb-3">
                     <div className="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-1.5">
-                        {projection.outcomes.map(o => (
-                            <div
-                                key={o.letter}
-                                className={`text-center rounded px-2 py-1.5 text-xs border ${
-                                    o.reachesTarget
-                                        ? 'bg-green-50 border-green-300 text-green-900'
-                                        : 'bg-gray-50 border-gray-200 text-gray-600'
-                                }`}
-                            >
-                                <div className="font-semibold">{o.letter}</div>
-                                <div className="font-mono">{o.gno.toFixed(2)}</div>
-                            </div>
-                        ))}
+                        {projection.outcomes.map(o => {
+                            const selected = appliedGrade === o.letter;
+                            const clickable = Boolean(onApplyGrade);
+                            return (
+                                <button
+                                    key={o.letter}
+                                    type="button"
+                                    disabled={!clickable}
+                                    onClick={() => onApplyGrade?.(candidate.courseCode, o.letter)}
+                                    title={clickable
+                                        ? `${candidate.courseCode} dersini ${o.letter} ile senaryoya uygula`
+                                        : undefined}
+                                    className={`text-center rounded px-2 py-1.5 text-xs border transition-colors ${
+                                        selected
+                                            ? 'bg-indigo-600 border-indigo-700 text-white font-semibold'
+                                            : o.reachesTarget
+                                                ? 'bg-green-50 border-green-300 text-green-900 hover:bg-green-100'
+                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                    } ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+                                >
+                                    <div className="font-semibold">{o.letter}</div>
+                                    <div className="font-mono">{o.gno.toFixed(2)}</div>
+                                    {selected && <div className="text-[10px] mt-0.5">senaryoda</div>}
+                                </button>
+                            );
+                        })}
                     </div>
                     <p className="mt-2 text-xs text-gray-400">
                         Yeşil kutular {target.toFixed(2)} hedefini tek başına sağlayan notlardır.
-                        Toplam {COEFFICIENT_GRADES.length} harf notu (Madde 18/4).
+                        {onApplyGrade && ' Bir nota tıklayınca ders o notla senaryoya işlenir.'}
+                        {' '}Toplam {COEFFICIENT_GRADES.length} harf notu (Madde 18/4).
                     </p>
                 </div>
             )}

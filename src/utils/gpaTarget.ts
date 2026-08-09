@@ -1,5 +1,5 @@
 import type { Course } from '../types';
-import type { TranscriptRecord } from './transcriptParser';
+import type { StudentRecord } from '../types';
 import { GRADES, getGrade, isLockedFromRetake } from '../data/gradeSystem';
 
 /**
@@ -29,7 +29,7 @@ export interface GpaBase {
     gno: number;
 }
 
-export function computeBase(records: TranscriptRecord[]): GpaBase {
+export function computeBase(records: StudentRecord[]): GpaBase {
     let weighted = 0;
     let credits = 0;
     for (const r of records) {
@@ -69,16 +69,30 @@ export interface TargetCandidate {
  * ayrı bir konudur (bkz. repeatRules.determineRetakes).
  */
 export function buildCandidates(
-    records: TranscriptRecord[],
-    options: { newCourses?: Course[] } = {}
+    records: StudentRecord[],
+    options: {
+        newCourses?: Course[];
+        /**
+         * Madde 8/5 kilidine (AA/YT tekrar edilemez) rağmen listede kalacak
+         * ders kodları.
+         *
+         * Kullanıcı senaryoda bir derse AA verdiğinde ders kilitleniyor ve
+         * listeden düşüyordu; böylece kendi seçimini değiştiremiyor ya da geri
+         * alamıyordu. Kullanıcının uyguladığı dersler görünür kalmalı.
+         */
+        alwaysInclude?: string[];
+    } = {}
 ): TargetCandidate[] {
     const base = computeBase(records);
     const candidates: TargetCandidate[] = [];
+    const pinned = new Set((options.alwaysInclude ?? []).map(c => c.trim().toUpperCase()));
 
     for (const r of records) {
         const g = getGrade(r.grade.letter);
         if (!g?.countsInGpa || g.coefficient === null) continue;
-        if (isLockedFromRetake(r.grade.letter)) continue; // Madde 8/5
+        if (isLockedFromRetake(r.grade.letter) && !pinned.has(r.courseCode.trim().toUpperCase())) {
+            continue; // Madde 8/5
+        }
 
         // Tekrar: payda sabit, pay (4.00 - mevcut) × AKTS kadar artabilir.
         const gain = base.credits > 0 ? ((4.0 - g.coefficient) * r.ects) / base.credits : 0;
@@ -218,7 +232,7 @@ export interface TargetPlan {
  * elenir.
  */
 export function buildTargetPlans(
-    records: TranscriptRecord[],
+    records: StudentRecord[],
     target: number,
     candidates: TargetCandidate[],
     options: { maxCourses?: number } = {}
@@ -288,7 +302,7 @@ export function buildTargetPlans(
 }
 
 export function buildTargetPlan(
-    records: TranscriptRecord[],
+    records: StudentRecord[],
     target: number,
     candidates: TargetCandidate[],
     options: { maxCourses?: number; spread?: boolean } = {}

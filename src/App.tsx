@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Upload, BookOpen, GraduationCap, Calendar, BarChart, ChevronRight, CheckCircle, AlertCircle, Trash2, Github, FileText, Download, BarChart3, CheckCircle2, Calculator, TrendingUp, Info, Award, ShieldCheck, Globe } from 'lucide-react';
 import { translations } from './data/locales';
 import { VisitorCounter } from './components/VisitorCounter';
@@ -555,6 +555,72 @@ export default function App() {
     setSimulationRecords(prev => prev.filter(r => r.id !== id));
   };
 
+  /**
+   * "Hangi dersten hangi notu alırsam" tablosundaki bir nota tıklanınca
+   * o dersi senaryoya işler.
+   *
+   * Ders senaryoda zaten varsa notu DEĞİŞTİRİLİR, yeni satır eklenmez —
+   * Madde 19/3 uyarınca bir dersin yalnızca en son notu geçerlidir; aynı
+   * dersi iki kez saymak ortalamayı bozardı. Aynı nota tekrar tıklamak
+   * seçimi geri alır ve dersin transkriptteki özgün notuna döner.
+   */
+  const applyScenarioGrade = (courseCode: string, letter: string) => {
+    const gradeInfo = GRADE_SYSTEM[letter];
+    if (!gradeInfo) return;
+    const key = courseCode.trim().toUpperCase();
+
+    setAppliedGrades(prev => {
+      // Aynı nota tekrar tıklamak seçimi kaldırır.
+      if (prev[key] === letter) {
+        const { [key]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: letter };
+    });
+
+    setSimulationRecords(prev => {
+      const index = prev.findIndex(r => r.courseCode.trim().toUpperCase() === key);
+
+      if (index >= 0) {
+        // Aynı not yeniden tıklandıysa: transkriptteki özgün nota geri dön.
+        if (prev[index].grade.letter === letter) {
+          const original = records.find(r => r.courseCode.trim().toUpperCase() === key);
+          if (!original) return prev;
+          const reverted = [...prev];
+          reverted[index] = { ...original };
+          return reverted;
+        }
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          grade: { letter, coefficient: gradeInfo.coefficient, passed: gradeInfo.passed }
+        };
+        return next;
+      }
+
+      // Senaryoda yok: ders planından bilgileri alıp yeni satır ekle.
+      const course = getActiveCourses().find(c => c.code.trim().toUpperCase() === key);
+      if (!course) return prev;
+      return [...prev, {
+        id: `SIM-${key}-${Date.now()}`,
+        courseCode: course.code,
+        courseName: course.name,
+        credits: course.credits,
+        ects: course.ects,
+        semester: 'Simülasyon',
+        grade: { letter, coefficient: gradeInfo.coefficient, passed: gradeInfo.passed }
+      }];
+    });
+  };
+
+  /**
+   * Kullanıcının not tablosundan TIKLAYARAK uyguladığı dersler.
+   *
+   * Tüm senaryo kayıtları değil yalnızca bunlar izlenir: seçili kutuyu
+   * işaretlemek ve AA verilse bile dersi listede tutmak için kullanılır.
+   */
+  const [appliedGrades, setAppliedGrades] = useState<Record<string, string>>({});
+
   // Simülasyon UI State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -900,15 +966,20 @@ export default function App() {
                   disabledReason={!profile ? 'Ders önerisi için önce bölüm seçin.' : undefined}
                 />
 
-                {/* Hedef GNO → hangi dersi tekrar, hangi notla (Madde 19/3) */}
+                {/* Hedef GNO → hangi dersi tekrar, hangi notla (Madde 19/3).
+                    Kaynak SENARYO kayıtlarıdır: bir nota tıklandığında tablo
+                    da yeni duruma göre yeniden hesaplanır, böylece art arda
+                    yapılan seçimler birikerek görünür. */}
                 <GpaTargetPlanner
-                  records={academicAnalysis.active}
+                  records={simulationRecords.length > 0 ? simulationRecords : academicAnalysis.active}
                   newCourseOptions={
                     profile
                       ? profile.courses.filter(c =>
-                          !academicAnalysis.active.some(r => r.courseCode.toUpperCase() === c.code.toUpperCase()))
+                          !simulationRecords.some(r => r.courseCode.toUpperCase() === c.code.toUpperCase()))
                       : []
                   }
+                  onApplyGrade={applyScenarioGrade}
+                  currentGrades={appliedGrades}
                 />
               </div>
             )}
