@@ -12,7 +12,7 @@ import { assessAcademicStanding, determineRetakes, getEctsLimit } from '../src/u
 import { generateCourseProposal, checkPrerequisites } from '../src/utils/courseSelectionRules';
 import { validateProfile } from '../src/utils/departmentRegistry';
 import { GRADES } from '../src/data/gradeSystem';
-import { computeBase, buildCandidates, projectCandidate, buildTargetPlan, buildTargetPlans } from '../src/utils/gpaTarget';
+import { computeBase, buildCandidates, projectCandidate, buildTargetPlan, buildTargetPlans, suggestTarget, TARGET_THRESHOLDS } from '../src/utils/gpaTarget';
 import { groupOfferings, buildSchedulePlan, buildWeeklyGrid } from '../src/utils/schedulePlanner';
 import type { ParsedOffering } from '../src/utils/schedulePdfParser';
 
@@ -758,6 +758,37 @@ check('AA alınan ders normalde aday değil',
     !buildCandidates(aaRecords).some(c => c.courseCode === 'MAT1011'));
 check('kullanıcı uyguladıysa aday listesinde kalır',
     buildCandidates(aaRecords, { alwaysInclude: ['MAT1011'] }).some(c => c.courseCode === 'MAT1011'));
+
+// --- Otomatik hedef önerisi ---
+//
+// 2,00 altındaki öğrenci için hedef daima 2,00: Madde 19/6 uyarınca önce
+// akademik yetersizlikten çıkmak gerekir. Üstündekiler için bir SONRAKİ eşik.
+eq('eşikler', TARGET_THRESHOLDS.join(','), '2,2.5,3,3.5,4');
+
+for (const [gno, beklenen] of [[0.90, 2.0], [1.74, 2.0], [1.99, 2.0]] as const) {
+    const s = suggestTarget(gno);
+    eq(`GNO ${gno} → hedef ${beklenen}`, s.target, beklenen);
+    check(`GNO ${gno} kritik işaretli`, s.critical);
+    check(`GNO ${gno} gerekçesi Madde 19/6'ya bağlı`, s.reason.includes('19/6'));
+}
+
+for (const [gno, beklenen] of [[2.00, 2.5], [2.10, 2.5], [2.49, 2.5], [2.50, 3.0],
+                               [2.61, 3.0], [3.00, 3.5], [3.60, 4.0]] as const) {
+    const s = suggestTarget(gno);
+    eq(`GNO ${gno} → bir sonraki eşik ${beklenen}`, s.target, beklenen);
+    check(`GNO ${gno} kritik değil`, !s.critical);
+    check(`GNO ${gno} hedefi mevcudun üstünde`, s.target > gno);
+}
+
+const tavan = suggestTarget(4.0);
+check('4.00 tavan olarak işaretli', tavan.atCeiling && tavan.target === 4.0);
+
+// Öneri her zaman anlamlı bir plan üretebilmeli: hedef mevcut GNO'nun üstünde
+// olduğu için "zaten hedefin üzerindesiniz" durumu oluşmaz.
+for (const gno of [0.9, 2.1, 2.61, 3.2]) {
+    check(`GNO ${gno} için önerilen hedef boş plan üretmez`,
+        suggestTarget(gno).target > Math.round(gno * 100) / 100);
+}
 
 // Hedefin ÜZERİNDE olan öğrenciye ortalamayı düşüren not önerilmemeli.
 //

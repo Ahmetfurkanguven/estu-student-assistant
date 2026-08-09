@@ -46,6 +46,72 @@ function round2(n: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Otomatik hedef önerisi
+// ---------------------------------------------------------------------------
+
+/**
+ * Anlamlı ortalama eşikleri.
+ *
+ * 2,00 yönetmelikten gelir (Madde 19/4-6: başarılı sayılmak ve akademik
+ * yetersizliğe düşmemek için gereken alt sınır). Üstündekiler öğrencinin
+ * kendine koyacağı hedefler için makul basamaklardır.
+ */
+export const TARGET_THRESHOLDS = [2.0, 2.5, 3.0, 3.5, 4.0];
+
+export interface TargetSuggestion {
+    target: number;
+    /** Öğrenciye gösterilecek gerekçe. */
+    reason: string;
+    /** 2,00'ın altındaki öğrenci — hedef pazarlık konusu değil. */
+    critical: boolean;
+    /** Zaten en üst eşikte; daha yükseği yok. */
+    atCeiling: boolean;
+}
+
+/**
+ * Öğrencinin durumuna göre hedef önerir.
+ *
+ * 2,00'ın ALTINDAKİ öğrenci için hedef her zaman 2,00'dır: Madde 19/6 uyarınca
+ * bu öğrenci akademik yetersizlik uyarısı alır ve düzelmezse ders tekrarına
+ * girer. Onun için "3,00'a çıkayım" diye bir hedef anlamsızdır; önce eşiğin
+ * üstüne çıkmak gerekir.
+ *
+ * 2,00'ın üstündeki öğrenci için bir SONRAKİ eşik önerilir — hâlihazırda
+ * geçtiği bir hedefi göstermek işe yaramıyor, plan boş çıkıyordu.
+ */
+export function suggestTarget(currentGno: number): TargetSuggestion {
+    const gno = round2(currentGno);
+
+    if (gno < 2.0) {
+        return {
+            target: 2.0,
+            critical: true,
+            atCeiling: false,
+            reason: 'GNO’nuz 2,00’ın altında. Madde 19/6 uyarınca akademik yetersizlik ' +
+                'uyarısı alırsınız ve düzelmezse ders tekrarına girersiniz. Önce bu eşiğin ' +
+                'üstüne çıkmak gerekiyor.'
+        };
+    }
+
+    const next = TARGET_THRESHOLDS.find(t => t > gno);
+    if (next === undefined) {
+        return {
+            target: 4.0,
+            critical: false,
+            atCeiling: true,
+            reason: 'Ulaşılabilecek en yüksek ortalamadasınız (4,00).'
+        };
+    }
+
+    return {
+        target: next,
+        critical: false,
+        atCeiling: false,
+        reason: `GNO’nuz ${gno.toFixed(2)}. Bir sonraki eşik ${next.toFixed(2)} — hedef olarak bu önerildi.`
+    };
+}
+
+// ---------------------------------------------------------------------------
 // Adaylar
 // ---------------------------------------------------------------------------
 

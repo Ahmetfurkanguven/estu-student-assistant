@@ -4,7 +4,7 @@ import type { StudentRecord } from '../types';
 import type { Course } from '../types';
 import {
     computeBase, buildCandidates, projectCandidate, buildTargetPlans,
-    COEFFICIENT_GRADES, type TargetCandidate, type TargetPlan
+    COEFFICIENT_GRADES, suggestTarget, TARGET_THRESHOLDS, type TargetCandidate, type TargetPlan
 } from '../utils/gpaTarget';
 
 interface Props {
@@ -32,11 +32,16 @@ interface Props {
  *   2. Şu dersi bu dönem alırsam hangi not bana ne kazandırır? → not tablosu
  */
 export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade, currentGrades }: Props) {
-    const [target, setTarget] = useState(2.5);
+    // Hedef, öğrencinin durumuna göre OTOMATİK önerilir. Kullanıcı elle
+    // değiştirene kadar öneriyi izler; değiştirdiği an kendi seçimi geçerli olur.
+    const [manualTarget, setManualTarget] = useState<number | null>(null);
     const [includeNew, setIncludeNew] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
 
     const base = useMemo(() => computeBase(records), [records]);
+    const suggestion = useMemo(() => suggestTarget(base.gno), [base.gno]);
+    const target = manualTarget ?? suggestion.target;
+    const setTarget = (v: number) => setManualTarget(v);
     const candidates = useMemo(
         () => buildCandidates(records, {
             newCourses: includeNew ? newCourseOptions : [],
@@ -74,18 +79,60 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
                 AA veya YT alınmış dersler tekrar edilemez (Madde 8/5).
             </p>
 
+            {/* Otomatik öneri — hedefi kullanıcının bulmasına gerek yok. */}
+            <div className={`rounded-lg border p-3 mb-4 ${
+                suggestion.critical ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-200'
+            }`}>
+                <p className={`text-sm ${suggestion.critical ? 'text-red-900' : 'text-indigo-900'}`}>
+                    <strong>Önerilen hedef: {suggestion.target.toFixed(2)}</strong>
+                    {manualTarget !== null && manualTarget !== suggestion.target && (
+                        <span className="ml-2 text-xs opacity-80">
+                            (şu an {target.toFixed(2)} ile hesaplanıyor)
+                        </span>
+                    )}
+                </p>
+                <p className={`text-xs mt-1 ${suggestion.critical ? 'text-red-800' : 'text-indigo-800'}`}>
+                    {suggestion.reason}
+                </p>
+
+                {!suggestion.atCeiling && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-xs text-gray-600 mr-1">Başka bir hedef:</span>
+                        {TARGET_THRESHOLDS.filter(t => t > plan.currentGno).map(t => (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() => setTarget(t)}
+                                className={`px-2.5 py-1 rounded border text-xs font-mono transition-colors ${
+                                    Math.abs(target - t) < 0.001
+                                        ? 'border-indigo-500 bg-indigo-600 text-white'
+                                        : 'border-gray-300 bg-white hover:bg-gray-50 text-gray-700'
+                                }`}
+                            >
+                                {t.toFixed(2)}
+                            </button>
+                        ))}
+                        {manualTarget !== null && (
+                            <button
+                                type="button"
+                                onClick={() => setManualTarget(null)}
+                                className="px-2.5 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-600"
+                            >
+                                öneriye dön
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+
             <div className="flex flex-wrap items-end gap-4 mb-4">
-                <label className="text-sm">
-                    <span className="block text-gray-600 mb-1">Hedef GNO</span>
-                    <input
-                        type="number" min={0} max={4} step={0.05} value={target}
-                        onChange={e => setTarget(Math.min(4, Math.max(0, Number(e.target.value) || 0)))}
-                        className="w-28 border border-gray-300 rounded px-2 py-1 font-mono"
-                    />
-                </label>
                 <div className="text-sm">
                     <span className="block text-gray-600 mb-1">Mevcut</span>
                     <span className="font-mono text-lg font-semibold">{plan.currentGno.toFixed(2)}</span>
+                </div>
+                <div className="text-sm">
+                    <span className="block text-gray-600 mb-1">Hedef</span>
+                    <span className="font-mono text-lg font-semibold text-indigo-700">{target.toFixed(2)}</span>
                 </div>
                 <div className="text-sm">
                     <span className="block text-gray-600 mb-1">Plan sonunda</span>
