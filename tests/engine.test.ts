@@ -759,6 +759,35 @@ check('AA alınan ders normalde aday değil',
 check('kullanıcı uyguladıysa aday listesinde kalır',
     buildCandidates(aaRecords, { alwaysInclude: ['MAT1011'] }).some(c => c.courseCode === 'MAT1011'));
 
+// Hedefin ÜZERİNDE olan öğrenciye ortalamayı düşüren not önerilmemeli.
+//
+// Madde 19/3 gereği tekrar edilen dersin en son notu geçerlidir; "FF alman
+// yeter" demek hedefin altına düşürmese bile ortalamayı gerçekten düşürür.
+const aboveTarget = parseTranscript(`2023-2024 Güz Dönemi
+EEM102   Introduction to EE  7.5  DC  9.75  Z
+MAT1011  Calculus I  7.5  BA  24.75  Z
+FİZ105   Physics I   6.0  BB  18.00  Z`).records;
+const aboveBase = computeBase(aboveTarget);
+const aboveCands = buildCandidates(aboveTarget);
+check('senaryo kurgusu: GNO hedefin üzerinde', Math.round(aboveBase.gno * 100) / 100 > 2.0);
+
+for (const c of aboveCands) {
+    const proj = projectCandidate(aboveBase, c, 2.0);
+    if (!proj.minimumSufficientGrade) continue;
+    const secilen = proj.outcomes.find(o => o.letter === proj.minimumSufficientGrade)!;
+    check(`${c.courseCode}: önerilen not ortalamayı düşürmüyor`,
+        !secilen.lowersGno,
+        `${proj.minimumSufficientGrade} → ${secilen.gno} (mevcut ${Math.round(aboveBase.gno * 100) / 100})`);
+    check(`${c.courseCode}: önerilen not mevcut nottan iyi`,
+        secilen.coefficient > (c.currentCoefficient ?? 0),
+        `${proj.minimumSufficientGrade} vs ${c.currentGrade}`);
+}
+
+// Düşürücü notlar yine de gösteriliyor ama işaretli
+const dusuren = projectCandidate(aboveBase, aboveCands[0], 2.0).outcomes.filter(o => o.lowersGno);
+check('ortalamayı düşüren notlar işaretlendi', dusuren.length > 0);
+check('FF her zaman düşürücü sayılır', dusuren.some(o => o.letter === 'FF'));
+
 const onlyRetakes = multi.find(p => p.strategy === 'sadece-tekrar');
 if (onlyRetakes) {
     check('"sadece tekrar" planında yeni ders yok',

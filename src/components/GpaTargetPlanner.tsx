@@ -205,6 +205,15 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
                     hesaba kat" seçilince ders planının tamamı aday olduğu için
                     çoğu ders hiç görünmüyordu. Artık hepsi listeleniyor, arama
                     ile daraltılıyor. */}
+                {plan.currentGno >= target && (
+                    <p className="mt-3 text-sm bg-green-50 border border-green-200 rounded p-3 text-green-900">
+                        GNO'nuz ({plan.currentGno.toFixed(2)}) hedefin üzerinde — bu hedef için
+                        hiçbir dersi tekrar almanız gerekmiyor. Aşağıdaki tablo yine de
+                        "şu dersi tekrar alsam ne olurdu" sorusunu yanıtlar; daha yüksek bir
+                        hedef girerek gerçek bir plan alabilirsiniz.
+                    </p>
+                )}
+
                 <input
                     value={filter}
                     onChange={e => setFilter(e.target.value)}
@@ -256,9 +265,11 @@ function CandidateRow({
                 </span>
                 <span className="text-xs text-gray-500 shrink-0 ml-3">
                     {candidate.currentGrade ?? 'yeni'} · {candidate.ects} AKTS ·{' '}
-                    {projection.minimumSufficientGrade
-                        ? <span className="text-green-700 font-medium">tek başına {projection.minimumSufficientGrade} yeter</span>
-                        : <span className="text-gray-400">tek başına yetmez</span>}
+                    {projection.alreadyOptimal
+                        ? <span className="text-gray-400">yükseltme payı yok</span>
+                        : projection.minimumSufficientGrade
+                            ? <span className="text-green-700 font-medium">en az {projection.minimumSufficientGrade} almalısın</span>
+                            : <span className="text-gray-400">tek başına yetmez</span>}
                 </span>
             </button>
 
@@ -280,22 +291,29 @@ function CandidateRow({
                                     className={`text-center rounded px-2 py-1.5 text-xs border transition-colors ${
                                         selected
                                             ? 'bg-indigo-600 border-indigo-700 text-white font-semibold'
-                                            : o.reachesTarget
-                                                ? 'bg-green-50 border-green-300 text-green-900 hover:bg-green-100'
-                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                                            : o.lowersGno
+                                                // Ortalamayı düşüren not: seçilebilir ama tavsiye değil.
+                                                ? 'bg-red-50 border-red-200 text-red-800 hover:bg-red-100'
+                                                : o.reachesTarget
+                                                    ? 'bg-green-50 border-green-300 text-green-900 hover:bg-green-100'
+                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                                     } ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
                                 >
                                     <div className="font-semibold">{o.letter}</div>
                                     <div className="font-mono">{o.gno.toFixed(2)}</div>
-                                    {selected && <div className="text-[10px] mt-0.5">senaryoda</div>}
+                                    {selected
+                                        ? <div className="text-[10px] mt-0.5">senaryoda</div>
+                                        : o.lowersGno && <div className="text-[10px] mt-0.5">düşürür</div>}
                                 </button>
                             );
                         })}
                     </div>
                     <p className="mt-2 text-xs text-gray-400">
                         Yeşil kutular {target.toFixed(2)} hedefini tek başına sağlayan notlardır.
+                        Kırmızı kutular ortalamanızı <strong>düşürür</strong>: tekrar edilen dersin
+                        en son notu geçerli olduğu için (Madde 19/3) mevcut notunuzdan kötü bir
+                        not almak zarar verir.
                         {onApplyGrade && ' Bir nota tıklayınca ders o notla senaryoya işlenir.'}
-                        {' '}Toplam {COEFFICIENT_GRADES.length} harf notu (Madde 18/4).
                     </p>
                 </div>
             )}

@@ -135,6 +135,8 @@ export interface GradeOutcome {
     gno: number;
     /** Hedefe ulaşır mı. */
     reachesTarget: boolean;
+    /** Bu notu almak mevcut GNO'yu DÜŞÜRÜR mü (Madde 19/3). */
+    lowersGno: boolean;
 }
 
 export interface CandidateProjection {
@@ -144,6 +146,8 @@ export interface CandidateProjection {
     minimumSufficientGrade: string | null;
     /** Bu ders AA ile bile hedefe yetmiyorsa true. */
     insufficientAlone: boolean;
+    /** Ortalamayı yükseltebilecek hiçbir not yok (ör. ders zaten AA). */
+    alreadyOptimal: boolean;
 }
 
 function applyOne(base: GpaBase, candidate: TargetCandidate, coefficient: number): GpaBase {
@@ -162,23 +166,40 @@ export function projectCandidate(
     candidate: TargetCandidate,
     target: number
 ): CandidateProjection {
+    const currentGno = round2(base.gno);
+
     const outcomes: GradeOutcome[] = COEFFICIENT_GRADES.map(g => {
         const next = applyOne(base, candidate, g.coefficient!);
+        const gno = round2(next.gno);
         return {
             letter: g.letter,
             coefficient: g.coefficient!,
-            gno: round2(next.gno),
-            reachesTarget: round2(next.gno) >= target
+            gno,
+            reachesTarget: gno >= target,
+            // Madde 19/3: tekrar edilen dersin EN SON notu geçerlidir. Mevcut
+            // nottan kötü bir notla tekrar almak ortalamayı gerçekten düşürür.
+            lowersGno: gno < currentGno
         };
     });
 
-    const sufficient = [...outcomes].reverse().find(o => o.reachesTarget);
+    // Önerilecek not iki şartı birden sağlamalı: hedefe ulaşmalı VE ortalamayı
+    // gerçekten YÜKSELTMELİ.
+    //
+    // Yalnızca "hedefe ulaşır" demek yetmiyordu: hedefin zaten üzerinde olan
+    // bir öğrenciye "bu dersten FF alman yeter" çıkıyordu — Madde 19/3 gereği
+    // tekrar edilen dersin en son notu geçerli olduğu için bu öneri ortalamayı
+    // gerçekten düşürüyordu. "Düşürmesin" demek de yetmiyor; o zaman da
+    // "DC alıp yine DC al" gibi hiçbir işe yaramayan bir öneri çıkıyor.
+    const worthwhile = (o: GradeOutcome) => o.reachesTarget && o.gno > currentGno;
+    const sufficient = [...outcomes].reverse().find(worthwhile);
 
     return {
         candidate,
         outcomes,
         minimumSufficientGrade: sufficient?.letter ?? null,
-        insufficientAlone: !outcomes.some(o => o.reachesTarget)
+        insufficientAlone: !outcomes.some(worthwhile),
+        /** Bu ders için ortalamayı yükselten hiçbir not yoksa (ör. zaten AA). */
+        alreadyOptimal: !outcomes.some(o => o.gno > currentGno)
     };
 }
 
