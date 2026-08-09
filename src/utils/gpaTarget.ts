@@ -360,7 +360,36 @@ export function buildTargetPlan(
         return round2(state.gno);
     };
 
-    if (achievable) {
+    if (achievable && options.spread) {
+        // "Notlar daha düşük olsun": amaç GEREKEN EN YÜKSEK NOTU küçültmek.
+        //
+        // Her turda, o an en yüksek nota sahip dersi bir kademe düşürmeyi dene;
+        // hedef hâlâ tutuyorsa uygula ve baştan başla. Hiçbir ders düşürülemez
+        // hâle gelince dur. Böylece yük derslere dengeli dağılır.
+        //
+        // (Sondan başa tek geçiş yapmak yanlış sonuç veriyordu: en verimsiz
+        // dersler önce dibe çekiliyor, yük en verimli derslere AA olarak
+        // yıkılıyordu — "en az ders" planından bile yüksek not isteyen bir
+        // sonuç çıkıyordu.)
+        for (let guard = 0; guard < chosen.length * COEFFICIENT_GRADES.length; guard++) {
+            const byHighest = [...chosen].sort(
+                (a, b) => (assigned.get(b.courseCode) ?? 0) - (assigned.get(a.courseCode) ?? 0)
+            );
+            const lowered = byHighest.some(c => {
+                const current = assigned.get(c.courseCode) ?? 4.0;
+                const next = COEFFICIENT_GRADES.find(g => (g.coefficient ?? 0) < current);
+                if (!next) return false;
+                const trial = new Map(assigned);
+                trial.set(c.courseCode, next.coefficient!);
+                if (gnoWith(trial) < target) return false;
+                assigned.set(c.courseCode, next.coefficient!);
+                return true;
+            });
+            if (!lowered) break;
+        }
+    } else if (achievable) {
+        // "En az ders": sondan başa tek geçiş yeterli — amaç ders sayısını
+        // küçük tutmak, notu değil.
         for (let i = chosen.length - 1; i >= 0; i--) {
             const c = chosen[i];
             for (const g of [...COEFFICIENT_GRADES].reverse()) { // düşükten yükseğe
@@ -371,11 +400,26 @@ export function buildTargetPlan(
         }
     }
 
-    // 3) Adımları sırayla üret
+    // Notu mevcut notundan daha İYİ olmayan dersler plandan çıkarılır: o dersi
+    // "tekrar al" demenin bir anlamı yok. Yeni dersler her hâlükârda kalır.
+    for (const c of chosen) {
+        if (c.kind !== 'tekrar') continue;
+        if ((assigned.get(c.courseCode) ?? 4.0) <= (c.currentCoefficient ?? 0)) {
+            assigned.delete(c.courseCode);
+        }
+    }
+    const effective = chosen.filter(c => assigned.has(c.courseCode));
+
+    // 3) Adımları sırayla üret.
+    //
+    // Yalnızca gerçekten plana giren dersler üzerinden yürünür; böylece son
+    // adımın GNO'su planın gerçek sonucudur. (Önceki sürüm tüm adayları
+    // adımlaştırıp sonra "katkısı olmayanları" listeden atıyordu; atılan adım
+    // hesaba dâhil kaldığı için gösterilen sonuç ile gerçek sonuç ayrışıyordu.)
     const steps: PlanStep[] = [];
     let state = base;
-    for (const c of chosen) {
-        const coefficient = assigned.get(c.courseCode) ?? 4.0;
+    for (const c of effective) {
+        const coefficient = assigned.get(c.courseCode)!;
         const grade = COEFFICIENT_GRADES.find(g => g.coefficient === coefficient);
         state = applyOne(state, c, coefficient);
         steps.push({
@@ -386,22 +430,27 @@ export function buildTargetPlan(
         });
     }
 
-    // Katkısı sıfır olan adımları at (nota gerek yokmuş)
-    const trimmed = steps.filter((s, i) => i === 0 || s.gnoAfter > steps[i - 1].gnoAfter);
+    const projectedGno = steps.length ? steps[steps.length - 1].gnoAfter : currentGno;
 
-    if (trimmed.some(s => s.candidate.kind === 'tekrar')) {
+    if (steps.some(s => s.candidate.kind === 'tekrar')) {
         notes.push('Tekrar edilen derste eski not tamamen düşer, yeni not yerine geçer (Madde 19/3).');
     }
-    if (trimmed.some(s => s.candidate.kind === 'yeni')) {
+    if (steps.some(s => s.candidate.kind === 'yeni')) {
         notes.push('Yeni ders eklemek paydayı da büyüttüğü için ortalamayı tekrar kadar hızlı yükseltmez.');
+    }
+    if (achievable && projectedGno > target + 0.005) {
+        notes.push(
+            `Harf notları kademeli olduğu için sonuç hedefin tam üstüne oturmuyor; ` +
+            `bu plan ${projectedGno.toFixed(2)} veriyor (hedef ${target.toFixed(2)}).`
+        );
     }
 
     return {
         target,
         currentGno,
         achievable,
-        steps: trimmed,
-        projectedGno: trimmed.length ? trimmed[trimmed.length - 1].gnoAfter : currentGno,
+        steps,
+        projectedGno,
         maxPossibleGno,
         notes
     };

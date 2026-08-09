@@ -621,12 +621,54 @@ export default function App() {
    */
   const [appliedGrades, setAppliedGrades] = useState<Record<string, string>>({});
 
+
+  /**
+   * Bir senaryo değişikliğini geri alır.
+   *
+   * Transkriptte var olan bir ders ise TRANSKRİPTTEKİ notuna döner — senaryo
+   * hiçbir zaman gerçek transkript verisini bozmaz, yalnızca kopyası üzerinde
+   * çalışır. Senaryoda eklenmiş yeni bir ders ise tamamen kaldırılır, yani
+   * hiç alınmamış sayılır.
+   */
+  const revertScenarioChange = (record: StudentRecord) => {
+    const key = record.courseCode.trim().toUpperCase();
+    const source = records.find(r => r.courseCode.trim().toUpperCase() === key);
+
+    setAppliedGrades(prev => {
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+
+    setSimulationRecords(prev => source
+      ? prev.map(r => (r.id === record.id ? { ...source } : r))
+      : prev.filter(r => r.id !== record.id));
+  };
+
   // Simülasyon UI State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Derived Simulation State
   // Calculate when we have simulation records (Step 2 onwards where simulation UI is shown)
   const simGpaResult = simulationRecords.length > 0 ? calculateGPA(simulationRecords) : null;
+
+  /**
+   * Senaryo tablosu satırları — DEĞİŞTİRİLENLER EN ALTTA.
+   *
+   * Kullanıcı neyi değiştirdiğini görebilmeli. Değişiklik iki türlü olur:
+   * transkriptte var olan bir dersin notunun değiştirilmesi ("değişti") ya da
+   * hiç alınmamış bir dersin senaryoya eklenmesi ("yeni").
+   */
+  const simulationRows = useMemo(() => {
+    const original = new Map(records.map(r => [r.courseCode.trim().toUpperCase(), r]));
+    const rows = (simGpaResult?.usedCourses ?? []).map(record => {
+      const source = original.get(record.courseCode.trim().toUpperCase());
+      const isNew = !source;
+      const changed = isNew || source.grade.letter !== record.grade.letter;
+      return { record, changed, isNew };
+    });
+    // Kararlı sıralama: değişmeyenler önce, değişenler sonda.
+    return rows.sort((a, b) => Number(a.changed) - Number(b.changed));
+  }, [simGpaResult, records]);
 
   const [selectedArea, setSelectedArea] = useState('');
 
@@ -1337,9 +1379,16 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {simGpaResult?.usedCourses?.map((record) => (
-                        <tr key={record.id} className={`hover:bg-gray-50 transition-colors ${record.semester === 'Simülasyon' ? 'bg-indigo-50/30' : ''}`}>
-                          <td className="px-6 py-4 font-medium text-gray-900">{record.courseCode}</td>
+                      {simulationRows.map(({ record, changed, isNew }) => (
+                        <tr key={record.id} className={`hover:bg-gray-50 transition-colors ${changed ? 'bg-indigo-50/40' : ''}`}>
+                          <td className="px-6 py-4 font-medium text-gray-900">
+                            {record.courseCode}
+                            {changed && (
+                              <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 align-middle">
+                                {isNew ? 'yeni' : 'değişti'}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={record.courseName || ''}>{record.courseName}</td>
                           <td className="px-6 py-4 text-center font-medium">{record.credits}</td>
                           <td className="px-6 py-4 text-center text-xs text-gray-500">{record.semester}</td>
@@ -1356,11 +1405,13 @@ export default function App() {
                             </select>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            {record.semester === 'Simülasyon' && (
+                            {changed && (
                               <button
-                                onClick={() => removeSimulationRecord(record.id)}
-                                className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
-                                title="Dersi Sil"
+                                onClick={() => revertScenarioChange(record)}
+                                className="text-gray-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50"
+                                title={isNew
+                                  ? 'Dersi senaryodan çıkar (hiç alınmamış sayılır)'
+                                  : 'Değişikliği geri al (transkriptteki notuna döner)'}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>

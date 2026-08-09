@@ -707,6 +707,58 @@ if (spread && fewest) {
         worst(spread) <= worst(fewest), `${worst(spread)} vs ${worst(fewest)}`);
 }
 
+// "Notlar daha düşük olsun" gerçekten daha DÜŞÜK not istemeli ve hedefi
+// gereksiz yere aşmamalı. Eski sürüm tam tersini yapıyordu: yükü en verimli
+// derslere AA olarak yıkıp hedefi 0.70 aşıyordu.
+const spreadRecords = parseTranscript(`2023-2024 Güz Dönemi
+MAT1011  Calculus I  7.5  DD  7.50  Z
+FİZ105   Physics I   6.0  CC  12.00  Z
+EEM209   Circuit Analysis I  7.5  DC  9.75  Z
+KİM1005  Chemistry   6.0  DD  6.00  Z
+BİM122   Discrete    5.0  CD  8.50  Z`).records;
+const spreadCands = buildCandidates(spreadRecords);
+
+for (const hedef of [2.0, 2.5, 3.0]) {
+    const list = buildTargetPlans(spreadRecords, hedef, spreadCands);
+    const az = list.find(p => p.strategy === 'en-az-ders');
+    const yay = list.find(p => p.strategy === 'en-kolay-notlar');
+    if (!az || !yay) continue;
+
+    const enZor = (p: typeof az) => Math.max(...p.steps.map(s => s.requiredCoefficient));
+    check(`hedef ${hedef}: yayılmış plan daha düşük not istiyor`,
+        enZor(yay) <= enZor(az), `${enZor(yay)} vs ${enZor(az)}`);
+    check(`hedef ${hedef}: yayılmış plan hedefi aşırı geçmiyor`,
+        yay.projectedGno <= hedef + 0.10, `sonuç ${yay.projectedGno}`);
+    check(`hedef ${hedef}: yayılmış plan hedefi tutturuyor`,
+        yay.projectedGno >= hedef - 0.005, `sonuç ${yay.projectedGno}`);
+}
+
+// Plandaki her adım gerçekten iyileştirme olmalı: mevcut notundan daha kötü
+// ya da eşit bir not "plan adımı" olarak gösterilmemeli.
+const planSteps = buildTargetPlans(spreadRecords, 2.5, spreadCands)
+    .flatMap(p => p.steps.filter(s => s.candidate.kind === 'tekrar'));
+check('hiçbir adım mevcut nottan kötü değil',
+    planSteps.every(s => s.requiredCoefficient > (s.candidate.currentCoefficient ?? 0)),
+    planSteps.filter(s => s.requiredCoefficient <= (s.candidate.currentCoefficient ?? 0))
+        .map(s => `${s.candidate.courseCode}:${s.requiredGrade}`).join(','));
+
+// Son adımın GNO'su planın gerçek sonucudur
+for (const p of buildTargetPlans(spreadRecords, 2.5, spreadCands)) {
+    if (!p.steps.length) continue;
+    eq(`${p.strategy}: bildirilen sonuç son adımla tutarlı`,
+        p.projectedGno, p.steps[p.steps.length - 1].gnoAfter);
+}
+
+// Kullanıcının uyguladığı ders AA olsa bile listede kalmalı (Madde 8/5 kilidi
+// korunur ama kendi seçimi geri alınabilsin diye).
+const aaRecords = parseTranscript(`2023-2024 Güz Dönemi
+MAT1011  Calculus I  7.5  AA  30.00  Z
+FİZ105   Physics I   6.0  CC  12.00  Z`).records;
+check('AA alınan ders normalde aday değil',
+    !buildCandidates(aaRecords).some(c => c.courseCode === 'MAT1011'));
+check('kullanıcı uyguladıysa aday listesinde kalır',
+    buildCandidates(aaRecords, { alwaysInclude: ['MAT1011'] }).some(c => c.courseCode === 'MAT1011'));
+
 const onlyRetakes = multi.find(p => p.strategy === 'sadece-tekrar');
 if (onlyRetakes) {
     check('"sadece tekrar" planında yeni ders yok',

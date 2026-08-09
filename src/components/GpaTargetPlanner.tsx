@@ -51,6 +51,14 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
         [records, target, candidates]
     );
     const [activePlan, setActivePlan] = useState(0);
+    const [filter, setFilter] = useState('');
+
+    const visibleCandidates = useMemo(() => {
+        const q = filter.trim().toLowerCase();
+        if (!q) return candidates;
+        return candidates.filter(c =>
+            c.courseCode.toLowerCase().includes(q) || c.courseName.toLowerCase().includes(q));
+    }, [candidates, filter]);
     const plan: TargetPlan = plans[Math.min(activePlan, plans.length - 1)] ?? plans[0];
 
     if (!records.length) return null;
@@ -192,8 +200,23 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
                 <summary className="text-sm font-medium text-gray-700 cursor-pointer">
                     Tek tek: hangi dersten hangi notu alırsam ne olur? ({candidates.length} ders)
                 </summary>
-                <div className="mt-3 space-y-2">
-                    {candidates.slice(0, 25).map(candidate => (
+
+                {/* Liste eskiden ilk 25 derste kesiliyordu; "yeni ders almayı da
+                    hesaba kat" seçilince ders planının tamamı aday olduğu için
+                    çoğu ders hiç görünmüyordu. Artık hepsi listeleniyor, arama
+                    ile daraltılıyor. */}
+                <input
+                    value={filter}
+                    onChange={e => setFilter(e.target.value)}
+                    placeholder="Ders kodu veya adıyla süz…"
+                    className="mt-3 w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
+                />
+
+                <div className="mt-2 max-h-[28rem] overflow-y-auto space-y-2 pr-1">
+                    {visibleCandidates.length === 0 && (
+                        <p className="text-sm text-gray-500 py-2">Aramanıza uyan ders yok.</p>
+                    )}
+                    {visibleCandidates.map(candidate => (
                         <CandidateRow
                             key={candidate.courseCode + candidate.kind}
                             candidate={candidate}
