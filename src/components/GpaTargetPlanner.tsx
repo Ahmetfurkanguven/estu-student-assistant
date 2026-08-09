@@ -58,12 +58,25 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
     const [activePlan, setActivePlan] = useState(0);
     const [filter, setFilter] = useState('');
 
+    /**
+     * Adaylar iki gruba ayrılır: daha önce ALINMIŞ dersler (tekrar edilerek
+     * notu değiştirilebilir) ve HİÇ ALINMAMIŞ dersler (ileride alınacak).
+     *
+     * Ders planının tamamı aday olabildiği için tek bir uzun liste seçimi
+     * zorlaştırıyordu. Ayrım, öğrencinin "geçmişimi düzelteyim" ile
+     * "geleceğimi planlayayım" niyetini ayırmasını sağlıyor.
+     */
+    const [kindFilter, setKindFilter] = useState<'all' | 'tekrar' | 'yeni'>('all');
+
     const visibleCandidates = useMemo(() => {
         const q = filter.trim().toLowerCase();
-        if (!q) return candidates;
         return candidates.filter(c =>
-            c.courseCode.toLowerCase().includes(q) || c.courseName.toLowerCase().includes(q));
-    }, [candidates, filter]);
+            (!q || c.courseCode.toLowerCase().includes(q) || c.courseName.toLowerCase().includes(q)) &&
+            (kindFilter === 'all' || c.kind === kindFilter));
+    }, [candidates, filter, kindFilter]);
+
+    const taken = visibleCandidates.filter(c => c.kind === 'tekrar');
+    const untaken = visibleCandidates.filter(c => c.kind === 'yeni');
     const plan: TargetPlan = plans[Math.min(activePlan, plans.length - 1)] ?? plans[0];
 
     if (!records.length) return null;
@@ -268,21 +281,61 @@ export function GpaTargetPlanner({ records, newCourseOptions = [], onApplyGrade,
                     className="mt-3 w-full border border-gray-300 rounded px-3 py-1.5 text-sm"
                 />
 
-                <div className="mt-2 max-h-[28rem] overflow-y-auto space-y-2 pr-1">
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                    {([
+                        ['all', 'Hepsi', candidates.length],
+                        ['tekrar', 'Daha önce aldıklarım', candidates.filter(c => c.kind === 'tekrar').length],
+                        ['yeni', 'Henüz almadıklarım', candidates.filter(c => c.kind === 'yeni').length]
+                    ] as const).map(([key, label, count]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setKindFilter(key)}
+                            disabled={count === 0}
+                            className={`px-3 py-1.5 rounded-lg border text-xs transition-colors disabled:opacity-40 ${
+                                kindFilter === key
+                                    ? 'border-indigo-500 bg-indigo-50 text-indigo-900 font-medium'
+                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                            }`}
+                        >
+                            {label} ({count})
+                        </button>
+                    ))}
+                </div>
+
+                <div className="mt-2 max-h-[28rem] overflow-y-auto space-y-4 pr-1">
                     {visibleCandidates.length === 0 && (
                         <p className="text-sm text-gray-500 py-2">Aramanıza uyan ders yok.</p>
                     )}
-                    {visibleCandidates.map(candidate => (
-                        <CandidateRow
-                            key={candidate.courseCode + candidate.kind}
-                            candidate={candidate}
-                            base={base}
-                            target={target}
-                            open={expanded === candidate.courseCode}
-                            onToggle={() => setExpanded(expanded === candidate.courseCode ? null : candidate.courseCode)}
-                            onApplyGrade={onApplyGrade}
-                            appliedGrade={currentGrades?.[candidate.courseCode.toUpperCase()]}
-                        />
+
+                    {([
+                        ['Daha önce aldığınız dersler', taken,
+                            'Tekrar alırsanız eski not tamamen düşer, yeni not yerine geçer (Madde 19/3).'],
+                        ['Henüz almadığınız dersler', untaken,
+                            'Yeni ders paydayı da büyütür; ortalamayı tekrar kadar hızlı yükseltmez.']
+                    ] as const).map(([title, list, hint]) => list.length === 0 ? null : (
+                        <div key={title}>
+                            <div className="sticky top-0 bg-white pb-1 z-10">
+                                <h5 className="text-xs font-semibold text-gray-700">
+                                    {title} <span className="font-normal text-gray-400">({list.length})</span>
+                                </h5>
+                                <p className="text-[11px] text-gray-400">{hint}</p>
+                            </div>
+                            <div className="space-y-2 mt-1">
+                                {list.map(candidate => (
+                                    <CandidateRow
+                                        key={candidate.courseCode + candidate.kind}
+                                        candidate={candidate}
+                                        base={base}
+                                        target={target}
+                                        open={expanded === candidate.courseCode}
+                                        onToggle={() => setExpanded(expanded === candidate.courseCode ? null : candidate.courseCode)}
+                                        onApplyGrade={onApplyGrade}
+                                        appliedGrade={currentGrades?.[candidate.courseCode.toUpperCase()]}
+                                    />
+                                ))}
+                            </div>
+                        </div>
                     ))}
                 </div>
             </details>
