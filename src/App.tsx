@@ -707,11 +707,13 @@ export default function App() {
       setAcademicAnalysis(result);
 
       if (result.active.length === 0) {
-        // Artık sessiz başarısızlık yok: neden "Okuma raporu"nda satır satır görünür.
+        // Artık sessiz başarısızlık yok: neden aşağıdaki uyarı panelinde
+        // satır satır görünür.
         const errors = result.diagnostics.filter(d => d.level === 'error');
         alert(
           'Transkriptten ders okunamadı.\n\n' +
-          (errors.map(e => '• ' + e.message).join('\n') || 'Ayrıntı için "Okuma raporu" bölümüne bakın.')
+          (errors.map(e => '• ' + e.message).join('\n') ||
+            'Ayrıntı için sayfadaki uyarı bölümüne bakın.')
         );
         return;
       }
