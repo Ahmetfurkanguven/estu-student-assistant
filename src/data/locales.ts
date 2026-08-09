@@ -6,7 +6,6 @@ export const translations = {
         header_title_desktop: 'ESTÜ Akademik Planlama Sistemi',
         header_no_department: 'Başlamak için bölümünüzü seçin',
         // Arayüzde kullanılan ama tanımsız kalmış anahtarlar
-        placeholder_code: 'Örn: EEM403',
         placeholder_name: 'Ders adı',
         input_ects: 'AKTS',
         spec_subtitle: 'Uzmanlaşma alanı ilerlemeniz',
@@ -101,9 +100,6 @@ export const translations = {
 
         // Add Course
         add_course_title: '➕ Senaryoya Ders Ekle',
-        tab_list: '🔍 Listeden Seç',
-        tab_custom: '✍️ Özel Ders Ekle',
-        btn_custom_add: '+ Özel Dersi Ekle',
         input_credit: 'Kredi',
         input_type: 'Ders Tipi',
         type_elective: 'Seçmeli',
@@ -143,7 +139,6 @@ export const translations = {
         header_title_desktop: 'ESTU Academic Planning System',
         header_no_department: 'Select your department to begin',
         // Arayüzde kullanılan ama tanımsız kalmış anahtarlar
-        placeholder_code: 'e.g. EEM403',
         placeholder_name: 'Course name',
         input_ects: 'ECTS',
         spec_subtitle: 'Your specialization progress',
@@ -238,9 +233,6 @@ export const translations = {
 
         // Add Course
         add_course_title: '➕ Add Course to Scenario',
-        tab_list: '🔍 Select from List',
-        tab_custom: '✍️ Add Custom Course',
-        btn_custom_add: '+ Add Custom Course',
         input_credit: 'Credit',
         input_type: 'Course Type',
         type_elective: 'Elective',

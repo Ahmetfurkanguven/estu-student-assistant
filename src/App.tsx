@@ -551,36 +551,11 @@ export default function App() {
     }));
   };
 
-  // Senaryo: Yeni ders ekle
-  const addSimulationCourse = (courseCode: string, letter: string) => {
-    const course = getActiveCourses().find(c => c.code === courseCode);
-    if (!course) return;
-
-    const gradeInfo = GRADE_SYSTEM[letter];
-
-    const newRecord: StudentRecord = {
-      id: `SIM-${Date.now()}-${Math.random()}`,
-      courseCode: course.code,
-      courseName: course.name,
-      credits: course.credits,
-      ects: course.ects,
-      semester: 'Simülasyon',
-      grade: {
-        letter,
-        coefficient: gradeInfo.coefficient,
-        passed: gradeInfo.passed
-      }
-    };
-    setSimulationRecords(prev => [...prev, newRecord]);
-  };
-
   const removeSimulationRecord = (id: string) => {
     setSimulationRecords(prev => prev.filter(r => r.id !== id));
   };
 
   // Simülasyon UI State
-  const [simAddCourseCode, setSimAddCourseCode] = useState('');
-  const [simAddGrade, setSimAddGrade] = useState('AA');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Derived Simulation State
@@ -590,7 +565,6 @@ export default function App() {
   const [selectedArea, setSelectedArea] = useState('');
 
   // Custom Course Mode State
-  const [isCustomMode, setIsCustomMode] = useState(false);
   const [customCourse, setCustomCourse] = useState({
     code: '',
     name: '',
@@ -1112,194 +1086,166 @@ export default function App() {
                 </div>
               )}
 
-              {/* Yeni Ders Ekleme (Merged) */}
+              {/* Senaryoya ders ekleme.
+                  Eskiden iki sekme vardı: "listeden seç" ve "manuel gir".
+                  Ayrı olmaları gereksizdi — kod alanı zaten katalogda arama
+                  yapıyor; katalogdan seçilen ders diğer alanları dolduruyor,
+                  katalogda olmayan ders için aynı alanlar elle dolduruluyor. */}
               <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 mt-6">
-                <h3 className="font-bold text-lg text-gray-800 mb-4">{t('add_course_title')}</h3>
+                <h3 className="font-bold text-lg text-gray-800 mb-1">{t('add_course_title')}</h3>
+                <p className="text-sm text-gray-500 mb-5">
+                  Ders kodunu yazmaya başlayın; ders planındakiler listelenir ve seçtiğinizde
+                  bilgiler otomatik dolar. Ders planında olmayan bir ders için alanları
+                  kendiniz doldurabilirsiniz.
+                </p>
 
-                {/* Tabs */}
-                <div className="flex gap-6 border-b border-gray-200 mb-6">
-                  <button
-                    className={`pb-2 px-1 font-medium text-sm transition-colors ${!isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setIsCustomMode(false)}
-                  >
-                    {t('tab_list')}
-                  </button>
-                  <button
-                    className={`pb-2 px-1 font-medium text-sm transition-colors ${isCustomMode ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                    onClick={() => setIsCustomMode(true)}
-                  >
-                    {t('tab_custom')}
-                  </button>
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                  {/* Kod alanı aynı zamanda katalog aramasıdır */}
+                  <div className="md:col-span-4 relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
 
-                {!isCustomMode ? (
-                  <div className="flex flex-col md:flex-row gap-4 items-end">
-                    <div className="flex-1 w-full relative">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ders Arayın / Search Course</label>
+                    {isSearchOpen && (
+                      <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsSearchOpen(false)} />
+                    )}
 
-                      {/* Backdrop to close dropdown when clicking outside */}
+                    <div className="relative z-20">
+                      <input
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 uppercase"
+                        value={customCourse.code}
+                        onChange={e => {
+                          setCustomCourse(prev => ({ ...prev, code: e.target.value }));
+                          setIsSearchOpen(true);
+                        }}
+                        onFocus={() => setIsSearchOpen(true)}
+                        placeholder="EEM403 veya ders adı…"
+                      />
+
                       {isSearchOpen && (
-                        <div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsSearchOpen(false)}></div>
-                      )}
+                        <ul className="absolute w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-100">
+                          {(() => {
+                            // Senaryoda zaten olan dersler (intibak karşılıkları dâhil) listelenmez.
+                            const taken = new Set<string>();
+                            simulationRecords.forEach(r => {
+                              taken.add(r.courseCode);
+                              const m = getActiveIntibak().find(x => x.oldCode === r.courseCode);
+                              if (m) taken.add(m.newCode);
+                            });
 
-                      <div className="relative z-20">
-                        <input
-                          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                          value={simAddCourseCode}
-                          onChange={(e) => {
-                            setSimAddCourseCode(e.target.value);
-                            setIsSearchOpen(true);
-                          }}
-                          onFocus={() => setIsSearchOpen(true)}
-                          placeholder="Örn: EEM403 veya Yapay Zeka..."
-                        />
+                            const q = customCourse.code.toLowerCase().trim();
+                            const matches = getActiveCourses()
+                              .filter(c => !taken.has(c.code))
+                              .filter(c =>
+                                !q ||
+                                c.code.toLowerCase().includes(q) ||
+                                c.name.toLowerCase().includes(q))
+                              .sort((a, b) => a.code.localeCompare(b.code, 'tr'))
+                              .slice(0, 60);
 
-                        {isSearchOpen && (
-                          <ul className="absolute w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-100">
-                            {(() => {
-                              // Alınmış veya senaryoda olan derslerin kodlarını (ve intibak karşılıklarını) bul
-                              const takenCodes = new Set<string>();
-                              simulationRecords.forEach(r => {
-                                takenCodes.add(r.courseCode); // Orijinal kod
-                                // İntibak kontrolü
-                                const mapping = getActiveIntibak().find(m => m.oldCode === r.courseCode);
-                                if (mapping) {
-                                  takenCodes.add(mapping.newCode); // Yeni kod
-                                }
-                              });
-
-                              const searchLower = simAddCourseCode.toLowerCase();
-                              const filtered = getActiveCourses()
-                                .filter(c => !takenCodes.has(c.code))
-                                .filter(c =>
-                                  c.code.toLowerCase().includes(searchLower) ||
-                                  c.name.toLowerCase().includes(searchLower)
-                                )
-                                .sort((a, b) => a.code.localeCompare(b.code));
-
-                              if (filtered.length === 0) {
-                                return <li className="px-4 py-3 text-gray-500 text-sm">Sonuç bulunamadı.</li>
-                              }
-
-                              return filtered.map(c => (
-                                <li
-                                  key={c.code}
-                                  onClick={() => {
-                                    setSimAddCourseCode(c.code);
-                                    setIsSearchOpen(false);
-                                  }}
-                                  className="px-4 py-3 hover:bg-indigo-50 cursor-pointer transition-colors"
-                                >
-                                  <div className="font-bold text-gray-800">{c.code}</div>
-                                  <div className="text-sm text-gray-600 truncate">{c.name}</div>
-                                  <div className="text-xs text-gray-400 mt-1">{c.credits} Kredi | {c.ects} AKTS</div>
+                            if (matches.length === 0) {
+                              return (
+                                <li className="px-4 py-3 text-sm text-gray-500">
+                                  Ders planında eşleşme yok — alanları elle doldurup ekleyebilirsiniz.
                                 </li>
-                              ));
-                            })()}
-                          </ul>
-                        )}
-                      </div>
+                              );
+                            }
+
+                            return matches.map(c => (
+                              <li
+                                key={c.code}
+                                onClick={() => {
+                                  setCustomCourse(prev => ({
+                                    ...prev,
+                                    code: c.code,
+                                    name: c.name,
+                                    credits: c.credits,
+                                    ects: c.ects,
+                                    type: c.type
+                                  }));
+                                  setIsSearchOpen(false);
+                                }}
+                                className="px-4 py-2.5 hover:bg-indigo-50 cursor-pointer transition-colors"
+                              >
+                                <div className="font-semibold text-gray-800">{c.code}</div>
+                                <div className="text-sm text-gray-600 truncate">{c.name}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">
+                                  {c.ects} AKTS{c.semester ? ` · ${c.semester}. yarıyıl` : ''}
+                                </div>
+                              </li>
+                            ));
+                          })()}
+                        </ul>
+                      )}
                     </div>
-                    <div className="w-full md:w-32">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Hedef Not</label>
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={simAddGrade}
-                        onChange={(e) => setSimAddGrade(e.target.value)}
-                      >
-                        {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
+                  </div>
+
+                  <div className="md:col-span-8">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_name')}</label>
+                    <input
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                      value={customCourse.name}
+                      onChange={e => setCustomCourse(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder={t('placeholder_name')}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_credit')}</label>
+                    <input
+                      type="number"
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                      value={customCourse.credits}
+                      onChange={e => setCustomCourse(prev => ({ ...prev, credits: Number(e.target.value) }))}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_ects')}</label>
+                    <input
+                      type="number"
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                      value={customCourse.ects}
+                      onChange={e => setCustomCourse(prev => ({ ...prev, ects: Number(e.target.value) }))}
+                    />
+                  </div>
+
+                  <div className="md:col-span-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_type')}</label>
+                    <select
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                      value={customCourse.type}
+                      onChange={e => setCustomCourse(prev => ({ ...prev, type: e.target.value }))}
+                    >
+                      <option value="secmeli">{t('type_elective')}</option>
+                      <option value="mesleki_secmeli">{t('type_technical')}</option>
+                      <option value="zorunlu">{t('type_mandatory')}</option>
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_grade')}</label>
+                    <select
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                      value={customCourse.grade}
+                      onChange={e => setCustomCourse(prev => ({ ...prev, grade: e.target.value }))}
+                    >
+                      {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2 flex justify-end">
                     <button
-                      onClick={() => {
-                        if (simAddCourseCode) {
-                          addSimulationCourse(simAddCourseCode, simAddGrade);
-                          setSimAddCourseCode(''); // Reset
-                        }
-                      }}
-                      disabled={!simAddCourseCode}
-                      className="w-full md:w-auto px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                      onClick={addCustomSimulationCourse}
+                      disabled={!customCourse.code.trim() || !customCourse.name.trim()}
+                      className="w-full px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
                     >
                       Ekle
                     </button>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                    <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_code')}</label>
-                      <input
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 uppercase"
-                        value={customCourse.code}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, code: e.target.value }))}
-                        placeholder={t('placeholder_code')}
-                      />
-                    </div>
-                    <div className="md:col-span-12 lg:col-span-5">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_name')}</label>
-                      <input
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={customCourse.name}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder={t('placeholder_name')}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_credit')}</label>
-                      <input
-                        type="number"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={customCourse.credits}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, credits: Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_ects')}</label>
-                      <input
-                        type="number"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={customCourse.ects}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, ects: Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div className="md:col-span-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('input_type')}</label>
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={customCourse.type}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, type: e.target.value }))}
-                      >
-                        <option value="secmeli">{t('type_elective')}</option>
-                        <option value="mesleki_secmeli">{t('type_technical')}</option>
-                        <option value="zorunlu">{t('type_mandatory')}</option>
-                      </select>
-                    </div>
-                    <div className="md:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('col_grade')}</label>
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500"
-                        value={customCourse.grade}
-                        onChange={e => setCustomCourse(prev => ({ ...prev, grade: e.target.value }))}
-                      >
-                        {/* GRADE_SYSTEM keys minus YZ/DZ */}
-                        {['AA', 'AB', 'BA', 'BB', 'BC', 'CB', 'CC', 'CD', 'DC', 'DD', 'FF', 'YT'].map(g => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="md:col-span-5 flex justify-end">
-                      <button
-                        onClick={addCustomSimulationCourse}
-                        disabled={!customCourse.code || !customCourse.name}
-                        className="w-full md:w-auto px-8 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 font-medium"
-                      >
-                        {t('btn_custom_add')}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
+
 
               {/* Ders Listesi */}
               <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden mt-6">
