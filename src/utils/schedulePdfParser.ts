@@ -444,6 +444,9 @@ interface TableLayout {
     /** Tabloyu sınırlayan x aralığı (yan yana tablolar için). */
     xMin: number;
     xMax: number;
+    /** İlk ve son başlık merkezleri — komşu tablolarla sınır hesabı için. */
+    firstCenter: number;
+    lastCenter: number;
     columns: ColumnBand[];
     classYear: number | null;
     headerY: number;
@@ -503,6 +506,20 @@ function discoverTables(pageCells: Cell[]): TableLayout[] {
     }
     if (currentMarks.length) tables.push(buildTable(currentMarks, pageCells, headerY));
 
+    // Tablonun x aralığı: ders hücreleri artık kolon bandına göre değil, TABLO
+    // aralığına göre toplanıyor. Aralık, komşu tabloların ilk ders başlıkları
+    // arasındaki orta noktadan geçer; tek tablolu sayfada sınır yoktur.
+    //
+    // Aralığı kolonların kapladığı yerle sınırlamak yanlış olur: hücre metni
+    // sola dayalı olduğu için ilk dersin metni, "Ders I" başlığının epey
+    // solunda başlayabiliyor (GÜN/SAAT kolonunun hemen bitişiği).
+    tables.forEach((t, i) => {
+        const prev = tables[i - 1];
+        const next = tables[i + 1];
+        t.xMin = prev ? (prev.lastCenter + t.firstCenter) / 2 : Number.NEGATIVE_INFINITY;
+        t.xMax = next ? (t.lastCenter + next.firstCenter) / 2 : Number.POSITIVE_INFINITY;
+    });
+
     return tables;
 }
 
@@ -540,8 +557,11 @@ function buildTable(
         });
     });
 
+    // Bu değerler discoverTables() içinde komşu tablolara göre yeniden atanır.
     const xMin = leftBound;
     const xMax = columns[columns.length - 1].xEnd;
+    const firstCenter = centers[0];
+    const lastCenter = centers[centers.length - 1];
 
     // Bu tablonun sınıf yılı: başlığın hemen üstündeki "II. SINIF"
     const yearCell = pageCells
@@ -553,7 +573,7 @@ function buildTable(
         ? ROMAN[/^([IVX]+)/i.exec(yearCell.text)![1].toUpperCase()] ?? null
         : null;
 
-    return { xMin, xMax, columns, classYear, headerY };
+    return { xMin, xMax, firstCenter, lastCenter, columns, classYear, headerY };
 }
 
 /**
@@ -658,6 +678,8 @@ export function parseSchedulePdf(
     const diagnostics: ScheduleParseDiagnostic[] = [];
     const known = new Set((options.knownCourseCodes ?? []).map(c => c.replace(/\s+/g, '').toUpperCase()));
     const raw: ParsedOffering[] = [];
+    let droppedNoDay = 0;
+    let droppedNoSlot = 0;
 
     const cells = buildCells(items);
     if (!cells.length) {
@@ -725,28 +747,61 @@ export function parseSchedulePdf(
 
             const rowTolerance = estimateRowHeight(timeRows) * 0.6;
 
-            // Ders hücreleri
-            for (const column of table.columns) {
-                if (column.kind !== 'course') continue;
+            // Saat satırlarını banda çevir: her satır, komşularıyla arasındaki
+            // orta noktalara kadar uzanan bir y aralığına sahiptir. Böylece iki
+            // etiket arasına düşen ders metni de doğru saate bağlanır.
+            const timeBands = (() => {
+                const sorted = [...timeRows].sort((a, b) => b.y - a.y); // yukarıdan aşağı
+                return sorted.map((row, i) => ({
+                    row,
+                    yMax: i === 0 ? Number.POSITIVE_INFINITY : (sorted[i - 1].y + row.y) / 2,
+                    yMin: i === sorted.length - 1 ? Number.NEGATIVE_INFINITY : (row.y + sorted[i + 1].y) / 2
+                }));
+            })();
 
+            // Ders hücreleri.
+            //
+            // Kolon bandına GÖRE FİLTRELEMİYORUZ. Başlıklar kolonda ortalanmış,
+            // hücre metinleri ise sola dayalıdır; ikisi aynı x aralığına düşmez.
+            // Başlık merkezlerinden türetilen dar bantlar derslerin çoğunu
+            // dışarıda bırakıyor ve programın yarısı kayboluyordu.
+            //
+            // Bunun yerine tablonun x aralığındaki HER hücre denenir; ders olup
+            // olmadığına içeriği karar verir (kod kalıbı + bilinen kod / ad /
+            // grup). Kolonlar yalnızca DERSLİK eşleştirmesinde kullanılır.
+            {
                 const courseCells = pageCells.filter(
-                    c => c.y < table.headerY && c.x >= column.x && c.x < column.xEnd
+                    c => c.y < table.headerY && c.x >= table.xMin && c.x < table.xMax
                 );
 
                 for (const cell of courseCells) {
                     if (ROOM_ONLY.test(cell.text)) continue;
 
-                    const day = dayBlocks.find(b => cell.y <= b.yMax && cell.y > b.yMin)?.day;
-                    if (!day) continue;
+                    // Dipnot/açıklama satırları program değildir:
+                    //   "MAT219'dan EMAT211'e değiştirilmiştir."
+                    //   "NOT 3: TÜR125, TAR165 ... programda gösterilmemiştir."
+                    if (/değiştiril|değişmiş|^NOT\s|^Note\s|gösterilme/i.test(cell.text)) continue;
 
-                    const slot = timeRows
-                        .map(r => ({ r, d: Math.abs(r.y - cell.y) }))
-                        .filter(t => t.d <= rowTolerance)
-                        .sort((a, b) => a.d - b.d)[0]?.r;
-                    if (!slot) continue;
+                    // Hücre ders gibi görünüyor mu? Görünüyorsa ve yine de
+                    // yerleştirilemiyorsa bunu SAYIYORUZ: sessizce düşürmek,
+                    // programın yarısının kaybolduğunu fark ettirmiyordu.
+                    const looksLikeCourse = COURSE_CODE.test(cell.text) && !ROOM_ONLY.test(cell.text);
+
+                    const day = dayBlocks.find(b => cell.y <= b.yMax && cell.y > b.yMin)?.day;
+                    if (!day) { if (looksLikeCourse) droppedNoDay++; continue; }
+
+                    // Saat satırı BANT olarak aranır, sabit toleransla değil.
+                    //
+                    // Ders metni saat etiketiyle aynı y'de olmak zorunda değil:
+                    // birden çok saati kaplayan bir blokta metin dikey ortalanır
+                    // ve iki etiketin arasına düşer. Sabit tolerans bunları
+                    // eliyordu — tek başına derslerin yarısını kaybettiren
+                    // sebep buydu (84 ve 49 hücre).
+                    const slot = timeBands.find(b => cell.y <= b.yMax && cell.y > b.yMin)?.row;
+                    if (!slot) { if (looksLikeCourse) droppedNoSlot++; continue; }
 
                     const isAsync = ASYNC_PATTERN.test(cell.text);
-                    const room = findRoom(pageCells, table, column, cell, rowTolerance);
+                    const room = findRoom(pageCells, table, cell, rowTolerance);
                     const roomIsLab = !!room && /^lab/i.test(room);
 
                     // Bir hücrede birden çok ders olabilir (paylaşılan seçmeli kutusu).
@@ -757,6 +812,14 @@ export function parseSchedulePdf(
                         const codeNorm = parsed.code.replace(/\s+/g, '').toUpperCase();
                         // Bilinen kod değilse ve ne ad ne grup varsa muhtemelen derslik
                         if (!known.has(codeNorm) && !parsed.name && !parsed.groups.length) continue;
+
+                        // "MAK118 / MAK117" gibi yalnızca kodlardan oluşan hücreler
+                        // derslik listesidir; ders adı sayılabilecek bir kelime yok.
+                        if (!known.has(codeNorm) &&
+                            parsed.name &&
+                            !/[A-Za-zÇĞİÖŞÜçğıöşü]{3,}/.test(parsed.name.replace(COURSE_CODE, ''))) {
+                            continue;
+                        }
 
                         // Lab oturumu mu, teorik mi?
                         //  - "(Class - All Groups)"        → herkese teorik
@@ -797,6 +860,15 @@ export function parseSchedulePdf(
             message: `${list.join(', ')}: "${downgraded[0].groupsLiteral.join('-')}" gösterimi aralık ` +
                 'olarak açıldığında aynı dersin aynı saatteki başka şubesiyle çakışıyordu; ' +
                 'harfi harfine (yalnızca yazılı gruplar) okundu.'
+        });
+    }
+
+    if (droppedNoDay + droppedNoSlot > 0) {
+        diagnostics.push({
+            level: 'warning', code: 'UNPLACED_CELLS',
+            message: `Ders gibi görünen ${droppedNoDay + droppedNoSlot} hücre yerleştirilemedi ` +
+                `(${droppedNoDay} tanesi gün bandına, ${droppedNoSlot} tanesi saat satırına oturmadı). ` +
+                'Program bu kadarıyla eksik olabilir.'
         });
     }
 
@@ -922,25 +994,31 @@ function estimateRowHeight(rows: Array<{ y: number }>): number {
     return gaps[Math.floor(gaps.length / 2)];
 }
 
-/** Ders hücresinin sağındaki "Derslik" kolonunda, aynı satırdaki değeri bulur. */
+/**
+ * Ders hücresinin derslik değerini bulur.
+ *
+ * Aynı satırda, ders hücresinin SAĞINDA kalan ve derslik gibi görünen ilk
+ * hücreyi alır. Kolon bandına güvenmiyoruz: hücreler sola dayalı olduğu için
+ * bir dersin dersliği, o dersin "kendi" kolon bandına düşmeyebiliyor.
+ */
 function findRoom(
     pageCells: Cell[],
     table: TableLayout,
-    courseColumn: ColumnBand,
     courseCell: Cell,
     tolerance: number
 ): string | null {
-    const roomColumn = table.columns.find(
-        c => c.kind === 'room' && c.index === courseColumn.index && c.x >= courseColumn.x
-    );
-    if (!roomColumn) return null;
+    // Bir sonraki ders hücresine kadar bak; ötesi başka dersin dersliğidir.
+    const sameRow = pageCells
+        .filter(c => c !== courseCell && Math.abs(c.y - courseCell.y) <= tolerance && c.x > courseCell.x)
+        .sort((a, b) => a.x - b.x);
 
-    const hit = pageCells
-        .filter(c => c.x >= roomColumn.x && c.x < roomColumn.xEnd)
-        .filter(c => Math.abs(c.y - courseCell.y) <= tolerance)
-        .sort((a, b) => Math.abs(a.y - courseCell.y) - Math.abs(b.y - courseCell.y))[0];
-
-    return hit ? hit.text : null;
+    for (const c of sameRow) {
+        if (ROOM_ONLY.test(c.text)) return c.text;
+        // Ders koduna benzeyen bir hücreye gelindiyse artık sonraki dersin
+        // alanındayız; bu dersin dersliği yok demektir.
+        if (COURSE_CODE.test(c.text)) return null;
+    }
+    return null;
 }
 
 function key(o: ParsedOffering): string {
